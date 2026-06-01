@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>My Leave | Leave Manager</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="nav-brand">📅 Leave Manager</div>
+    <div class="nav-user">
+      <span id="navUserName">Loading...</span>
+      <button class="btn btn-sm btn-outline" id="logoutBtn">Sign Out</button>
+    </div>
+  </nav>
+
+  <div class="page-container">
+
+    <!-- Balance Cards -->
+    <div class="cards-row" id="balanceCards">
+      <div class="card stat-card">
+        <div class="stat-label">Entitlement</div>
+        <div class="stat-value" id="statEntitlement">--</div>
+        <div class="stat-sub">days this cycle</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-label">Used</div>
+        <div class="stat-value used" id="statUsed">--</div>
+        <div class="stat-sub">days taken</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-label">Remaining</div>
+        <div class="stat-value remaining" id="statRemaining">--</div>
+        <div class="stat-sub">days left</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-label">Cycle Period</div>
+        <div class="stat-value cycle" id="statCycle">--</div>
+        <div class="stat-sub" id="statDept">--</div>
+      </div>
+    </div>
+
+    <!-- Request Leave -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Request Leave</h2>
+      </div>
+      <div class="card-body">
+        <form id="leaveRequestForm">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Leave Type</label>
+              <select id="leaveType">
+                <option value="Annual">Annual Leave</option>
+                <option value="Unpaid">Unpaid Leave</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Start Date</label>
+              <input type="date" id="leaveStart" required />
+            </div>
+            <div class="form-group">
+              <label>End Date</label>
+              <input type="date" id="leaveEnd" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Notes (optional)</label>
+            <textarea id="leaveNotes" placeholder="Any additional notes for your manager..."></textarea>
+          </div>
+          <div class="form-error" id="requestError"></div>
+          <div class="form-info" id="requestInfo"></div>
+          <button type="submit" class="btn btn-primary">Submit Request</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- My Requests -->
+    <div class="card">
+      <div class="card-header">
+        <h2>My Leave Requests</h2>
+      </div>
+      <div class="card-body">
+        <div class="table-wrap">
+          <table class="data-table" id="myRequestsTable">
+            <thead>
+              <tr>
+                <th>Start Date</th>
+                <th>End Date</th>
+                <th>Days</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="myRequestsBody">
+              <tr><td colspan="6" class="empty-row">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module" src="../js/staff.js"></script>
+</body>
+</html>
