@@ -2,10 +2,10 @@
 import { auth, db } from "./firebase.js";
 import { onAuthStateChanged, signOut,
          createUserWithEmailAndPassword,
-         EmailAuthProvider, reauthenticateWithCredential,
-         initializeApp as initApp, getAuth as getSecondAuth }
+         EmailAuthProvider, reauthenticateWithCredential }
   from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth as getSecondAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
          onSnapshot, addDoc, serverTimestamp, query, orderBy, where, writeBatch }
   from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -422,7 +422,6 @@ document.getElementById("empForm").addEventListener("submit", async (e) => {
     errEl.textContent = "Password must be at least 6 characters."; return;
   }
 
-  // Cycle start = joining date, cycle end = 1 year later
   const cycleStart   = joinDate;
   const cycleEndDate = cycleEnd(joinDate);
 
@@ -432,7 +431,6 @@ document.getElementById("empForm").addEventListener("submit", async (e) => {
 
   try {
     if (!editingEmpId) {
-      // Use secondary app to create user — manager stays logged in
       const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
       const uid  = cred.user.uid;
       await secondaryAuth.signOut();
@@ -457,7 +455,6 @@ document.getElementById("empForm").addEventListener("submit", async (e) => {
       toast(`${name} added successfully!`);
 
     } else {
-      // Edit existing
       const empData = {
         name, dept, pattern, joinDate,
         cycleStart, cycleEnd: cycleEndDate,
