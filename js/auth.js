@@ -1,13 +1,14 @@
-// js/auth.js
 import { auth, db } from "./firebase.js";
 import { signInWithEmailAndPassword, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { doc, getDoc }
   from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// Redirect if already logged in
+// Only redirect if already logged in and we're on the login page
 onAuthStateChanged(auth, async (user) => {
   if (!user) return;
+  // Already on a sub-page, don't redirect
+  if (window.location.pathname.includes("/pages/")) return;
   const role = await getRole(user.uid);
   redirect(role);
 });
@@ -47,7 +48,6 @@ function redirect(role) {
   else window.location.href = "pages/staff.html";
 }
 
-// Toggle password visibility
 document.getElementById("togglePw").addEventListener("click", () => {
   const inp = document.getElementById("loginPassword");
   inp.type = inp.type === "password" ? "text" : "password";
