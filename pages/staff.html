@@ -147,12 +147,12 @@
 
             <div class="field-row">
               <div class="field-group">
-                <label>Start Date *</label>
+                <label>Start Date * <span class="optional">(DD/MM/YYYY)</span></label>
                 <input type="date" id="fStartDate" required/>
                 <div class="date-hint" id="startHint"></div>
               </div>
               <div class="field-group">
-                <label>End Date *</label>
+                <label>End Date * <span class="optional">(DD/MM/YYYY)</span></label>
                 <input type="date" id="fEndDate" required/>
                 <div class="date-hint" id="endHint"></div>
               </div>
@@ -182,7 +182,10 @@
 
       <!-- Calendar -->
       <div class="card">
-        <div class="card-head"><span>Your Working Days — This Month</span></div>
+        <div class="card-head">
+          <span>Your Working Days</span>
+          <span id="calMonthLabel" style="font-size:13px;color:var(--gray-500);font-weight:500"></span>
+        </div>
         <div class="card-body">
           <div id="miniCalendar" class="mini-calendar"></div>
           <div class="calendar-legend">
