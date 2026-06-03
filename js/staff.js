@@ -56,15 +56,23 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
   location.href = "../index.html";
 });
 
-// ── Bottom nav ───────────────────────────────────────────────────
-document.querySelectorAll(".bnav-item").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".bnav-item").forEach(b => b.classList.remove("active"));
-    document.querySelectorAll(".page-section").forEach(s => s.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById("section-" + btn.dataset.section).classList.add("active");
-  });
-});
+// ── Navigation (top tabs + bottom nav) ──────────────────────────
+function switchSection(name) {
+  document.querySelectorAll(".bnav-item").forEach(b =>
+    b.classList.toggle("active", b.dataset.section === name));
+  document.querySelectorAll(".nav-tab[data-section]").forEach(t =>
+    t.classList.toggle("active", t.dataset.section === name));
+  document.querySelectorAll(".page-section").forEach(s => s.classList.remove("active"));
+  document.getElementById("section-" + name).classList.add("active");
+}
+
+// Bottom nav
+document.querySelectorAll(".bnav-item").forEach(btn =>
+  btn.addEventListener("click", () => switchSection(btn.dataset.section)));
+
+// Top nav tabs
+document.querySelectorAll(".nav-tab[data-section]").forEach(tab =>
+  tab.addEventListener("click", () => switchSection(tab.dataset.section)));
 
 // ── Balance display ──────────────────────────────────────────────
 function renderBalance() {
@@ -392,10 +400,7 @@ document.getElementById("leaveForm").addEventListener("submit", async (e) => {
     }
 
     // Switch to history
-    document.querySelectorAll(".bnav-item").forEach(b => b.classList.remove("active"));
-    document.querySelectorAll(".page-section").forEach(s => s.classList.remove("active"));
-    document.querySelector('[data-section="history"]').classList.add("active");
-    document.getElementById("section-history").classList.add("active");
+    switchSection("history");
 
   } catch(err) {
     errEl.textContent = "Failed to submit. Please try again.";
