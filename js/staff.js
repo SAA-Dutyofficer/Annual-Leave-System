@@ -161,12 +161,14 @@ document.getElementById("fPattern")?.addEventListener("input", () => {
   document.getElementById("patternHint").textContent = val ? (ok?"✓ Valid pattern":"✗ Use format like 6W4O"): "";
   document.getElementById("patternHint").style.color = ok ? "var(--green)" : "var(--red)";
   validateDates();
-  if (ok) renderCalendarWithPattern(val, getRequestRosterStart());
+  const startDate = document.getElementById("fStartDate").value;
+  if (ok) renderCalendarWithPattern(val, getRequestRosterStart(), startDate||null);
 });
 document.getElementById("fRosterStart")?.addEventListener("change", () => {
   validateDates();
   const pat = getRequestPattern();
-  if (pat && /^\d+W\d+O$/.test(pat)) renderCalendarWithPattern(pat, getRequestRosterStart());
+  const startDate = document.getElementById("fStartDate").value;
+  if (pat && /^\d+W\d+O$/.test(pat)) renderCalendarWithPattern(pat, getRequestRosterStart(), startDate||null);
 });
 
 // ── Date validation ───────────────────────────────────────────────
@@ -207,6 +209,14 @@ function validateDates() {
   const clashing = detectClashes(s, e, allRequests.filter(r => r.employeeId!==ME.uid));
   const cw = document.getElementById("clashWarning");
   if (clashing.length>=2) { cw.style.display="block"; document.getElementById("clashMsg").textContent=`${clashing.length} other staff on leave: ${clashing.join(", ")}`; } else cw.style.display="none";
+
+  // Update calendar to show the month of selected start date
+  const pat = getRequestPattern(), rs = getRequestRosterStart();
+  if (pat && /^\d+W\d+O$/.test(pat)) {
+    renderCalendarWithPattern(pat, rs, s);
+  } else if (EMP.dept === "GD") {
+    renderCalendar(s);
+  }
 }
 document.getElementById("fStartDate").addEventListener("change", validateDates);
 document.getElementById("fEndDate").addEventListener("change",   validateDates);
@@ -349,13 +359,15 @@ document.getElementById("changePwForm").addEventListener("submit", async (e) => 
 });
 
 // ── Calendar ──────────────────────────────────────────────────────
-function renderCalendar() {
+function renderCalendar(targetDateStr) {
   if (!EMP) return;
-  const el=document.getElementById("miniCalendar"), today=new Date();
-  const year=today.getFullYear(), month=today.getMonth();
+  const el=document.getElementById("miniCalendar");
+  const refDate = targetDateStr ? new Date(targetDateStr+"T00:00:00") : new Date();
+  const today=new Date();
+  const year=refDate.getFullYear(), month=refDate.getMonth();
   const firstDay=new Date(year,month,1).getDay(), daysInMonth=new Date(year,month+1,0).getDate();
   const lblEl=document.getElementById("calMonthLabel");
-  if (lblEl) lblEl.textContent=today.toLocaleDateString("en-GB",{month:"long",year:"numeric"});
+  if (lblEl) lblEl.textContent=refDate.toLocaleDateString("en-GB",{month:"long",year:"numeric"});
   const takenDates=new Set(), pendingDates=new Set();
   myRequests.forEach(r => {
     if (r.status==="Rejected"||r.status==="Cancelled") return;
@@ -371,7 +383,7 @@ function renderCalendar() {
   for (let i=0;i<firstDay;i++) html+=`<div class="cal-day cal-empty"></div>`;
   for (let d=1;d<=daysInMonth;d++) {
     const dateStr=`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-    const isToday=d===today.getDate();
+    const isToday=d===today.getDate() && month===today.getMonth() && year===today.getFullYear();
     const isWork=EMP.dept==="GD" ? isGDWorkDay(dateStr) : isDOWorkDay(dateStr, EMP.pattern||"", EMP.rosterStart||"");
     const isTaken=takenDates.has(dateStr), isPending=pendingDates.has(dateStr);
     let cls="cal-day ";
@@ -382,11 +394,11 @@ function renderCalendar() {
   el.innerHTML=html;
 }
 
-function renderCalendarWithPattern(pattern, rosterStart) {
+function renderCalendarWithPattern(pattern, rosterStart, targetDate) {
   if (!EMP) return;
   const orig={pattern:EMP.pattern, rosterStart:EMP.rosterStart};
   EMP.pattern=pattern; EMP.rosterStart=rosterStart;
-  renderCalendar();
+  renderCalendar(targetDate);
   EMP.pattern=orig.pattern; EMP.rosterStart=orig.rosterStart;
 }
 
