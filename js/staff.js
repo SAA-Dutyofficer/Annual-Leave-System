@@ -38,6 +38,7 @@ onAuthStateChanged(auth, async (user) => {
   renderCalendar();
   listenMyRequests();
   listenAllRequests();
+  listenForAutoRenewal();
   loadTeam();
   checkRenewal();
 });
@@ -87,6 +88,133 @@ function listenMyRequests() {
   onSnapshot(q, snap => {
     myRequests = snap.docs.map(d => ({ id:d.id, ...d.data() }));
     renderHistory(); renderUpcoming(); renderCalendar();
+  });
+}
+
+// ── Listen for balance hitting 0 after approval ───────────────────
+function listenForAutoRenewal() {
+  const empRef = doc(db, "employees", ME.uid);
+  onSnapshot(empRef, async (snap) => {
+    if (!snap.exists()) return;
+    const data = snap.data();
+    EMP = { id: snap.id, ...data };
+    renderBalance();
+
+    // Check if annual balance is 0 and cycle hasn't been renewed recently
+    const used = data.leaveUsed || 0;
+    const ent  = data.entitlement || 0;
+    if (used >= ent && ent > 0 && !document.getElementById("renewalModal")) {
+      // Check if renewal already happened this session
+      if (window._renewalPrompted) return;
+      window._renewalPrompted = true;
+      showSelfRenewalModal(data);
+    }
+  });
+}
+
+async function showSelfRenewalModal(empData) {
+  // Calculate next joining date anniversary
+  const joinDate = new Date(empData.joinDate + "T00:00:00");
+  const today    = new Date();
+  let nextAnniv  = new Date(today.getFullYear(), joinDate.getMonth(), joinDate.getDate());
+  if (nextAnniv <= today) nextAnniv.setFullYear(nextAnniv.getFullYear() + 1);
+  const nextAnnivStr = nextAnniv.toISOString().split("T")[0];
+
+  // Create modal
+  const overlay = document.createElement("div");
+  overlay.id = "renewalModal";
+  overlay.className = "modal-bg";
+  overlay.style.display = "flex";
+  overlay.innerHTML = `
+    <div class="modal-box modal-sm">
+      <div class="modal-hd">
+        <span>🔄 Leave Balance Renewed</span>
+      </div>
+      <div class="modal-bd">
+        <div class="renew-info">
+          Your annual leave balance has reached 0.<br><br>
+          Your new cycle will start from your joining date anniversary:<br>
+          <strong>${fmtDate(nextAnnivStr)}</strong><br><br>
+          You can request leave on or after this date in the new cycle.
+        </div>
+        <div class="field-group">
+          <label>New Cycle Entitlement (days) *</label>
+          <input type="number" id="selfRenewalDays" placeholder="e.g. 30" min="1" style="font-size:16px;padding:12px;"/>
+        </div>
+        <div class="form-error" id="selfRenewalError"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-primary btn-block" id="selfRenewalConfirm">Renew My Cycle</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  document.getElementById("selfRenewalConfirm").addEventListener("click", async () => {
+    const days = parseInt(document.getElementById("selfRenewalDays").value);
+    const errEl = document.getElementById("selfRenewalError");
+    if (!days || days < 1) { errEl.textContent = "Please enter a valid number of days."; return; }
+
+    const btn = document.getElementById("selfRenewalConfirm");
+    btn.disabled = true; btn.textContent = "Renewing...";
+
+    try {
+      const cycleStartNew = nextAnnivStr;
+      const cycleEndNew   = cycleEnd(cycleStartNew);
+
+      // Archive old cycle
+      await addDoc(collection(db, "cycleHistory"), {
+        employeeId:   ME.uid,
+        employeeName: EMP.name,
+        dept:         EMP.dept,
+        cycleStart:   EMP.cycleStart,
+        cycleEnd:     EMP.cycleEnd,
+        entitlement:  EMP.entitlement,
+        leaveUsed:    EMP.leaveUsed || 0,
+        unpaidUsed:   EMP.unpaidUsed || 0,
+        archivedAt:   serverTimestamp()
+      });
+
+      // Update employee with new cycle
+      await updateDoc(doc(db, "employees", ME.uid), {
+        cycleStart:   cycleStartNew,
+        cycleEnd:     cycleEndNew,
+        entitlement:  days,
+        leaveUsed:    0,
+        unpaidUsed:   0,
+        paternityUsed:0,
+        hajjUsed:     0,
+        emergencyUsed:0,
+        customUsed:   0,
+        cycleId:      `${ME.uid}_${cycleStartNew}`
+      });
+
+      // Audit log
+      await addDoc(collection(db, "auditLog"), {
+        action: "cycle_renewed",
+        label:  `Self-renewal by ${EMP.name}`,
+        detail: `New cycle: ${fmtDate(cycleStartNew)} – ${fmtDate(cycleEndNew)} · ${days} days`,
+        by:     EMP.name,
+        at:     serverTimestamp()
+      });
+
+      // Notify managers via email queue
+      await addDoc(collection(db, "emailQueue"), {
+        type:    "self_renewal",
+        to:      "managers",
+        subject: `Self-Renewal — ${EMP.name}`,
+        body:    `${EMP.name} has self-renewed their leave cycle.\nNew cycle: ${fmtDate(cycleStartNew)} – ${fmtDate(cycleEndNew)}\nNew entitlement: ${days} days\n\nThis was done automatically when their balance reached 0.`,
+        sentAt:  serverTimestamp()
+      });
+
+      toast("Your leave cycle has been renewed! You now have " + days + " days.");
+      overlay.remove();
+      window._renewalPrompted = false;
+
+    } catch(err) {
+      errEl.textContent = "Failed to renew. Please try again.";
+      btn.disabled = false; btn.textContent = "Renew My Cycle";
+      console.error(err);
+    }
   });
 }
 function listenAllRequests() {
