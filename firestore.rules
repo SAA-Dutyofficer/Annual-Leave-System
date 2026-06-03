@@ -7,40 +7,43 @@ service cloud.firestore {
       return isAuth() &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager';
     }
-    function isOwner(uid) { return isAuth() && request.auth.uid == uid; }
 
     match /users/{uid} {
-      allow read:  if isAuth() && (isOwner(uid) || isManager());
+      allow read: if isAuth();
       allow write: if isManager();
     }
 
     match /employees/{uid} {
-      allow read:  if isAuth() && (isOwner(uid) || isManager());
-      allow write: if isManager();
+      allow read: if isAuth();
+      // Staff can update their own employee record (for self-renewal)
+      allow update: if isAuth() && (request.auth.uid == uid || isManager());
+      allow create, delete: if isManager();
     }
 
     match /leaveRequests/{reqId} {
       allow create: if isAuth();
-      allow read:   if isAuth() && (resource.data.employeeId == request.auth.uid || isManager());
+      allow read: if isAuth();
       allow update: if isAuth() && (
-        (resource.data.employeeId == request.auth.uid && resource.data.status == 'Pending') ||
+        resource.data.employeeId == request.auth.uid ||
         isManager()
       );
       allow delete: if isManager();
     }
 
     match /groups/{groupId} {
-      allow read:  if isAuth();
+      allow read: if isAuth();
       allow write: if isManager();
     }
 
     match /cycleHistory/{docId} {
-      allow read:  if isAuth() && (resource.data.employeeId == request.auth.uid || isManager());
-      allow write: if isManager();
+      allow read: if isAuth();
+      // Staff can create their own cycle history (self-renewal)
+      allow create: if isAuth();
+      allow update, delete: if isManager();
     }
 
     match /auditLog/{docId} {
-      allow read:  if isManager();
+      allow read: if isManager();
       allow create: if isAuth();
       allow update, delete: if false;
     }
