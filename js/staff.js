@@ -167,8 +167,15 @@ document.getElementById("fPattern")?.addEventListener("input", () => {
 document.getElementById("fRosterStart")?.addEventListener("change", () => {
   validateDates();
   const pat = getRequestPattern();
+  const rosterStart = getRequestRosterStart();
   const startDate = document.getElementById("fStartDate").value;
-  if (pat && /^\d+W\d+O$/.test(pat)) renderCalendarWithPattern(pat, getRequestRosterStart(), startDate||null);
+  // Always update calendar to roster start month when roster date is chosen
+  const calTarget = startDate || rosterStart;
+  if (pat && /^\d+W\d+O$/.test(pat)) {
+    renderCalendarWithPattern(pat, rosterStart, calTarget);
+  } else if (rosterStart) {
+    renderCalendar(rosterStart);
+  }
 });
 
 // ── Date validation ───────────────────────────────────────────────
