@@ -218,9 +218,14 @@ document.getElementById("fPattern")?.addEventListener("input", () => {
     : "";
   document.getElementById("patternHint").style.color = ok ? "var(--green)" : "var(--red)";
   validateDates();
+  if (ok) renderCalendarWithPattern(val, getRequestRosterStart());
 });
 
-document.getElementById("fRosterStart")?.addEventListener("change", validateDates);
+document.getElementById("fRosterStart")?.addEventListener("change", () => {
+  validateDates();
+  const pat = getRequestPattern();
+  if (pat && /^\d+W\d+O$/.test(pat)) renderCalendarWithPattern(pat, getRequestRosterStart());
+});
 
 // ── Date validation ───────────────────────────────────────────────
 const fStart = document.getElementById("fStartDate");
@@ -489,6 +494,10 @@ function renderCalendar() {
   const month = today.getMonth();
   const firstDay    = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthLabel  = today.toLocaleDateString("en-GB", { month:"long", year:"numeric" });
+  // Set month label
+  const lblEl = document.getElementById("calMonthLabel");
+  if (lblEl) lblEl.textContent = monthLabel;
 
   const takenDates   = new Set();
   const pendingDates = new Set();
@@ -529,6 +538,16 @@ function renderCalendar() {
     html += `<div class="${cls}" title="${dateStr}">${d}</div>`;
   }
   el.innerHTML = html;
+}
+
+function renderCalendarWithPattern(pattern, rosterStart) {
+  if (!EMP) return;
+  const orig = { pattern: EMP.pattern, rosterStart: EMP.rosterStart };
+  EMP.pattern     = pattern;
+  EMP.rosterStart = rosterStart;
+  renderCalendar();
+  EMP.pattern     = orig.pattern;
+  EMP.rosterStart = orig.rosterStart;
 }
 
 // ── Team ──────────────────────────────────────────────────────────
