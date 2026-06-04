@@ -12,7 +12,10 @@ import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
 import { fmtDate, fmtDateTime, todayStr, cycleEnd, isRenewalDue,
          statusBadge, deptBadge, roleBadge, pbar, toast, initials }
   from "./utils.js";
-import { sendEmail } from "./email.js";
+import { sendEmail, notifyManagers } from "./email.js";
+import { isGDWorkDay, isDOWorkDay, countWorkDays,
+         detectClashes, leaveTypeBadge, LEAVE_TYPES, balanceField, cycleEnd }
+  from "./utils.js";
 
 // Secondary app for creating users without logging out the manager
 const secondaryApp = initializeApp({
@@ -49,6 +52,7 @@ function init() {
   listenRequests();
   listenGroups();
   listenAudit();
+  initMyLeave();
 }
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {
@@ -659,6 +663,158 @@ function renderAuditLog(items) {
         <div class="audit-action">${a.label}</div>
         <div class="audit-meta">${a.detail||""} · by ${a.by} · ${fmtDateTime(a.at)}</div>
       </div>
+    </div>`).join("");
+}
+
+// ── MY LEAVE ─────────────────────────────────────────────────────
+let MGR_EMP = null;
+let MGR_MY_REQUESTS = [];
+
+async function initMyLeave() {
+  // Load manager's own employee record
+  const eSnap = await getDoc(doc(db, "employees", MGR.uid));
+  if (!eSnap.exists()) return;
+  MGR_EMP = { id: eSnap.id, ...eSnap.data() };
+
+  // Show pattern fields if DO
+  if (MGR_EMP.dept === "DO") {
+    document.getElementById("mgr-doPatternFields").style.display = "block";
+    if (MGR_EMP.pattern)     document.getElementById("mgr-fPattern").value     = MGR_EMP.pattern;
+    if (MGR_EMP.rosterStart) document.getElementById("mgr-fRosterStart").value = MGR_EMP.rosterStart;
+  }
+
+  renderMgrBalance();
+
+  // Listen to own requests
+  const q = query(collection(db,"leaveRequests"), where("employeeId","==",MGR.uid), orderBy("submittedAt","desc"));
+  onSnapshot(q, snap => {
+    MGR_MY_REQUESTS = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+    renderMgrHistory();
+  });
+
+  // Date change listeners
+  document.getElementById("mgr-fStartDate").addEventListener("change", mgrValidateDates);
+  document.getElementById("mgr-fEndDate").addEventListener("change",   mgrValidateDates);
+  document.getElementById("mgr-fLeaveType").addEventListener("change", () => {
+    document.getElementById("mgr-customReasonGroup").style.display =
+      document.getElementById("mgr-fLeaveType").value === "Custom" ? "block" : "none";
+    mgrValidateDates();
+  });
+  document.getElementById("mgr-fPattern")?.addEventListener("input", mgrValidateDates);
+  document.getElementById("mgr-fRosterStart")?.addEventListener("change", mgrValidateDates);
+}
+
+function renderMgrBalance() {
+  if (!MGR_EMP) return;
+  const used = MGR_EMP.leaveUsed||0, ent = MGR_EMP.entitlement||0;
+  const rem  = Math.max(0, ent-used);
+  const pct  = ent>0 ? Math.min(100,Math.round(used/ent*100)) : 0;
+  const other= (MGR_EMP.unpaidUsed||0)+(MGR_EMP.paternityUsed||0)+(MGR_EMP.hajjUsed||0)+(MGR_EMP.emergencyUsed||0)+(MGR_EMP.customUsed||0);
+  document.getElementById("mgr-bcEntitlement").textContent = ent;
+  document.getElementById("mgr-bcUsed").textContent        = used;
+  document.getElementById("mgr-bcRemaining").textContent   = rem;
+  document.getElementById("mgr-bcOther").textContent       = other;
+  document.getElementById("mgr-progressPct").textContent   = pct+"%";
+  document.getElementById("mgr-progressLabel").textContent = `${used} of ${ent} annual days used`;
+  const fill = document.getElementById("mgr-progressFill");
+  fill.style.width = pct+"%";
+  fill.className = "progress-fill"+(pct>=90?" danger":pct>=70?" warn":"");
+  const cs=MGR_EMP.cycleStart, ce=MGR_EMP.cycleEnd||cycleEnd(cs||todayStr());
+  document.getElementById("mgr-cycleInfo").textContent = `Cycle: ${fmtDate(cs)} – ${fmtDate(ce)} | ${MGR_EMP.dept} Staff`;
+}
+
+function mgrGetPattern() {
+  if (MGR_EMP?.dept !== "DO") return null;
+  return (document.getElementById("mgr-fPattern")?.value.toUpperCase().trim()) || MGR_EMP?.pattern;
+}
+function mgrGetRosterStart() {
+  if (MGR_EMP?.dept !== "DO") return null;
+  return document.getElementById("mgr-fRosterStart")?.value || MGR_EMP?.rosterStart;
+}
+function mgrIsWorkDay(dateStr) {
+  if (!MGR_EMP) return false;
+  if (MGR_EMP.dept==="GD") return isGDWorkDay(dateStr);
+  return isDOWorkDay(dateStr, mgrGetPattern(), mgrGetRosterStart());
+}
+
+function mgrValidateDates() {
+  const s = document.getElementById("mgr-fStartDate").value;
+  const e = document.getElementById("mgr-fEndDate").value;
+  if (!s || !e || !MGR_EMP) return;
+  const startOk = mgrIsWorkDay(s), endOk = mgrIsWorkDay(e);
+  document.getElementById("mgr-startHint").textContent = startOk?"✓ Valid working day":"✗ Not a working day";
+  document.getElementById("mgr-startHint").style.color = startOk?"var(--green)":"var(--red)";
+  document.getElementById("mgr-endHint").textContent   = endOk?"✓ Valid working day":"✗ Not a working day";
+  document.getElementById("mgr-endHint").style.color   = endOk?"var(--green)":"var(--red)";
+  if (!startOk||!endOk||e<s) { document.getElementById("mgr-daysPreview").style.display="none"; return; }
+  const days = countWorkDays(s,e,MGR_EMP.dept,mgrGetPattern(),mgrGetRosterStart());
+  document.getElementById("mgr-daysPreview").style.display="block";
+  document.getElementById("mgr-daysCount").textContent=days;
+  const leaveType=document.getElementById("mgr-fLeaveType").value;
+  const rem=(MGR_EMP.entitlement||0)-(MGR_EMP.leaveUsed||0);
+  const bw=document.getElementById("mgr-balanceWarning");
+  if (leaveType==="Annual"&&days>rem){bw.style.display="block";bw.textContent=`⚠️ Only ${rem} annual days remaining.`;}
+  else bw.style.display="none";
+}
+
+document.getElementById("mgr-leaveForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!MGR_EMP) return;
+  const errEl=document.getElementById("mgr-formError");
+  errEl.textContent="";
+  const leaveType=document.getElementById("mgr-fLeaveType").value;
+  const customReason=document.getElementById("mgr-fCustomReason").value.trim();
+  const s=document.getElementById("mgr-fStartDate").value;
+  const e2=document.getElementById("mgr-fEndDate").value;
+  const notes=document.getElementById("mgr-fNotes").value.trim();
+  const pattern=mgrGetPattern(), rosterStart=mgrGetRosterStart();
+  if (!s||!e2){errEl.textContent="Select start and end dates.";return;}
+  if (e2<s){errEl.textContent="End date must be after start date.";return;}
+  if (leaveType==="Custom"&&!customReason){errEl.textContent="Enter a reason for custom leave.";return;}
+  if (!mgrIsWorkDay(s)){errEl.textContent="Start date is not a valid working day.";return;}
+  if (!mgrIsWorkDay(e2)){errEl.textContent="End date is not a valid working day.";return;}
+  const days=countWorkDays(s,e2,MGR_EMP.dept,pattern,rosterStart);
+  if (days===0){errEl.textContent="No working days in selected range.";return;}
+  if (leaveType==="Annual"){
+    const rem=(MGR_EMP.entitlement||0)-(MGR_EMP.leaveUsed||0);
+    if (days>rem){errEl.textContent=`Insufficient balance. ${rem} days remaining.`;return;}
+  }
+  try {
+    await addDoc(collection(db,"leaveRequests"),{
+      employeeId:MGR.uid, employeeName:MGR_EMP.name, employeeDept:MGR_EMP.dept,
+      employeeEmail:MGR_EMP.email, groupId:MGR_EMP.groupId||null,
+      leaveType, customReason:customReason||null,
+      requestPattern:MGR_EMP.dept==="DO"?pattern:null,
+      requestRosterStart:MGR_EMP.dept==="DO"?rosterStart:null,
+      startDate:s, endDate:e2, days, notes, status:"Pending",
+      hasClash:false, clashingWith:[],
+      submittedAt:serverTimestamp(), editedAt:null, cycleId:MGR_EMP.cycleId||null
+    });
+    toast(`Leave request submitted — ${days} day(s)`);
+    document.getElementById("mgr-leaveForm").reset();
+    document.getElementById("mgr-daysPreview").style.display="none";
+    document.getElementById("mgr-balanceWarning").style.display="none";
+    document.getElementById("mgr-startHint").textContent="";
+    document.getElementById("mgr-endHint").textContent="";
+    document.getElementById("mgr-customReasonGroup").style.display="none";
+  } catch(err){errEl.textContent="Failed to submit.";console.error(err);}
+});
+
+function renderMgrHistory() {
+  const el=document.getElementById("mgr-historyList");
+  if (!MGR_MY_REQUESTS.length){el.innerHTML=`<div class="list-empty">No leave requests yet.</div>`;return;}
+  el.innerHTML=MGR_MY_REQUESTS.map(r=>`
+    <div class="request-item">
+      <div class="req-top">
+        <span class="req-dates">${fmtDate(r.startDate)} – ${fmtDate(r.endDate)}</span>
+        ${statusBadge(r.status)}
+      </div>
+      <div class="req-meta">
+        <span class="req-days">${r.days} working day(s)</span>
+        ${leaveTypeBadge(r.leaveType)}
+        ${r.customReason?`<span style="font-size:11px;color:var(--gray-500)">${r.customReason}</span>`:""}
+      </div>
+      <div class="req-notes">${r.notes||""}</div>
     </div>`).join("");
 }
 
