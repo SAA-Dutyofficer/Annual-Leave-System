@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Manager | Annual Leave System</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+  <nav class="topnav">
+    <div class="topnav-left">
+      <span class="nav-logo">✈️ Annual Leave System</span>
+      <div class="nav-tabs" id="navTabs">
+        <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
+        <button class="nav-tab" data-tab="approvals">
+          Approvals
+          <span class="nav-badge" id="approvalsBadge" style="display:none">0</span>
+        </button>
+        <button class="nav-tab" data-tab="employees">Employees</button>
+        <button class="nav-tab" data-tab="groups">Groups</button>
+        <button class="nav-tab" data-tab="audit">Audit Log</button>
+        <button class="nav-tab" data-tab="myleave">My Leave</button>
+      </div>
+    </div>
+    <div class="topnav-right">
+      <span class="nav-username" id="navName">Manager</span>
+      <span class="offline-dot" id="offlineDot" title="Offline" style="display:none">●</span>
+      <button class="btn btn-ghost btn-sm" id="logoutBtn">Sign Out</button>
+    </div>
+  </nav>
+
+  <div class="mobile-tabs" id="mobileTabs">
+    <button class="mob-tab active" data-tab="dashboard">📊</button>
+    <button class="mob-tab" data-tab="approvals">✅ <span class="mob-badge" id="mobBadge" style="display:none">0</span></button>
+    <button class="mob-tab" data-tab="employees">👤</button>
+    <button class="mob-tab" data-tab="groups">👥</button>
+    <button class="mob-tab" data-tab="audit">📋</button>
+    <button class="mob-tab" data-tab="myleave">🏖️</button>
+  </div>
+
+  <div class="page-wrap mgr-wrap">
+
+    <!-- DASHBOARD TAB -->
+    <div class="tab-panel active" id="tab-dashboard">
+      <div class="tab-header">
+        <div class="section-title">Leave Dashboard</div>
+        <div class="tab-actions">
+          <select id="deptFilter" class="filter-select">
+            <option value="all">All Departments</option>
+            <option value="DO">DO Staff</option>
+            <option value="GD">GD Staff</option>
+          </select>
+          <select id="groupFilter" class="filter-select">
+            <option value="all">All Groups</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="stat-row" id="statRow">
+        <div class="stat-box"><div class="stat-num" id="statTotal">--</div><div class="stat-lbl">Total Staff</div></div>
+        <div class="stat-box"><div class="stat-num orange" id="statOnLeave">--</div><div class="stat-lbl">On Leave Today</div></div>
+        <div class="stat-box"><div class="stat-num red" id="statPending">--</div><div class="stat-lbl">Pending Requests</div></div>
+        <div class="stat-box"><div class="stat-num red" id="statClash">--</div><div class="stat-lbl">Clashes</div></div>
+        <div class="stat-box"><div class="stat-num green" id="statRenewals">--</div><div class="stat-lbl">Due Renewal</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span>All Staff — Leave Overview</span>
+          <input type="text" id="staffSearch" placeholder="Search employee..." class="search-input"/>
+        </div>
+        <div class="card-body no-pad">
+          <div class="excel-wrap">
+            <table class="excel-table" id="staffTable">
+              <thead>
+                <tr>
+                  <th class="col-sticky">Employee</th>
+                  <th>Dept</th>
+                  <th>Group</th>
+                  <th>Pattern</th>
+                  <th>Entitlement</th>
+                  <th>Used</th>
+                  <th>Remaining</th>
+                  <th>Unpaid</th>
+                  <th>% Used</th>
+                  <th>Cycle Period</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="staffTableBody">
+                <tr><td colspan="12" class="tbl-empty">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="expandedLeaveCard" style="display:none">
+        <div class="card-head">
+          <span id="expandedEmpName">Leave Requests</span>
+          <button class="btn btn-ghost-dark btn-sm" id="closeExpanded">✕ Close</button>
+        </div>
+        <div class="card-body no-pad">
+          <table class="excel-table">
+            <thead>
+              <tr>
+                <th>#</th><th>Type</th><th>Start</th><th>End</th>
+                <th>Days</th><th>Status</th><th>Clash</th><th>Notes</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="expandedBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- APPROVALS TAB -->
+    <div class="tab-panel" id="tab-approvals">
+      <div class="tab-header">
+        <div class="section-title">Leave Approvals</div>
+        <select id="approvalFilter" class="filter-select">
+          <option value="Pending">Pending Only</option>
+          <option value="all">All Requests</option>
+          <option value="Approved">Approved</option>
+          <option value="Rejected">Rejected</option>
+        </select>
+      </div>
+      <div class="card">
+        <div class="card-body no-pad">
+          <div class="excel-wrap">
+            <table class="excel-table">
+              <thead>
+                <tr>
+                  <th>Employee</th><th>Dept</th><th>Type</th><th>Start</th>
+                  <th>End</th><th>Days</th><th>Clash</th><th>Submitted</th><th>Status</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="approvalsBody"><tr><td colspan="10" class="tbl-empty">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EMPLOYEES TAB -->
+    <div class="tab-panel" id="tab-employees">
+      <div class="tab-header">
+        <div class="section-title">Manage Employees</div>
+        <button class="btn btn-primary" id="addEmpBtn">+ Add Employee</button>
+      </div>
+      <div class="card">
+        <div class="card-body no-pad">
+          <div class="excel-wrap">
+            <table class="excel-table">
+              <thead>
+                <tr>
+                  <th>Name</th><th>Email</th><th>Dept</th><th>Group</th>
+                  <th>Pattern</th><th>Join Date</th><th>Cycle Start</th>
+                  <th>Entitlement</th><th>Role</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="empTableBody"><tr><td colspan="10" class="tbl-empty">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GROUPS TAB -->
+    <div class="tab-panel" id="tab-groups">
+      <div class="tab-header">
+        <div class="section-title">Staff Groups</div>
+        <button class="btn btn-primary" id="addGroupBtn">+ Add Group</button>
+      </div>
+      <div class="groups-grid" id="groupsGrid"><div class="list-empty">No groups yet.</div></div>
+    </div>
+
+    <!-- AUDIT TAB -->
+    <div class="tab-panel" id="tab-audit">
+      <div class="tab-header">
+        <div class="section-title">Audit Log</div>
+        <select id="auditFilter" class="filter-select">
+          <option value="all">All Actions</option>
+          <option value="approved">Approvals</option>
+          <option value="rejected">Rejections</option>
+          <option value="employee_added">Employee Added</option>
+          <option value="employee_removed">Employee Removed</option>
+          <option value="cycle_renewed">Cycle Renewed</option>
+        </select>
+      </div>
+      <div class="card">
+        <div class="card-body no-pad">
+          <div id="auditList" class="audit-list"><div class="list-empty">Loading...</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ADD/EDIT EMPLOYEE MODAL -->
+  <div class="modal-bg" id="empModal" style="display:none">
+    <div class="modal-box modal-lg">
+      <div class="modal-hd">
+        <span id="empModalTitle">Add Employee</span>
+        <button class="modal-close" id="empModalClose">✕</button>
+      </div>
+      <div class="modal-bd">
+        <form id="empForm">
+          <input type="hidden" id="empFormUid"/>
+          <div class="field-row">
+            <div class="field-group">
+              <label>Full Name *</label>
+              <input type="text" id="efName" required placeholder="John Smith"/>
+            </div>
+            <div class="field-group">
+              <label>Email Address *</label>
+              <input type="email" id="efEmail" required placeholder="john@email.com"/>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <label>Password * <span class="optional">(edit: leave blank to keep)</span></label>
+              <input type="password" id="efPassword" placeholder="Min 6 characters"/>
+            </div>
+            <div class="field-group">
+              <label>Role *</label>
+              <select id="efRole">
+                <option value="staff">Staff</option>
+                <option value="manager">Manager / Admin</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <label>Department *</label>
+              <select id="efDept">
+                <option value="DO">DO Staff (Shift Workers)</option>
+                <option value="GD">GD Staff (Ground Duties Mon–Thu)</option>
+              </select>
+            </div>
+            <div class="field-group" id="efPatternGroup">
+              <label>Shift Pattern * <span class="optional">(e.g. 6W4O, 3W3O)</span></label>
+              <input type="text" id="efPattern" placeholder="6W4O"/>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <label>Joining Date * <span class="optional">(used for annual renewal)</span></label>
+              <input type="date" id="efJoinDate" required/>
+            </div>
+            <div class="field-group">
+              <label>Leave Entitlement (days) *</label>
+              <input type="number" id="efEntitlement" required placeholder="30" min="1"/>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-group" id="efRosterGroup">
+              <label>Roster Start Date * <span class="optional">(first day of shift cycle — for DO only)</span></label>
+              <input type="date" id="efRosterStart"/>
+            </div>
+            <div class="field-group">
+              <label>Assign to Group</label>
+              <select id="efGroup"><option value="">No Group</option></select>
+            </div>
+          </div>
+          <div class="form-error" id="empFormError"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-outline" id="empModalCancel">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="empFormSubmit">Add Employee</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD GROUP MODAL -->
+  <div class="modal-bg" id="groupModal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-hd">
+        <span>Create Group</span>
+        <button class="modal-close" id="groupModalClose">✕</button>
+      </div>
+      <div class="modal-bd">
+        <form id="groupForm">
+          <div class="field-group">
+            <label>Group Name *</label>
+            <input type="text" id="gfName" required placeholder="e.g. Group A"/>
+          </div>
+          <div class="field-group">
+            <label>Description</label>
+            <input type="text" id="gfDesc" placeholder="Optional"/>
+          </div>
+          <div class="form-error" id="groupFormError"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-outline" id="groupModalCancel">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create Group</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- RENEW CYCLE MODAL -->
+  <div class="modal-bg" id="renewModal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-hd">
+        <span>Renew Leave Cycle</span>
+        <button class="modal-close" id="renewModalClose">✕</button>
+      </div>
+      <div class="modal-bd">
+        <form id="renewForm">
+          <input type="hidden" id="renewEmpId"/>
+          <div class="renew-info" id="renewInfo"></div>
+          <div class="field-group">
+            <label>New Cycle Start Date *</label>
+            <input type="date" id="rfCycleStart" required/>
+          </div>
+          <div class="field-group">
+            <label>New Entitlement (days) *</label>
+            <input type="number" id="rfEntitlement" required min="1"/>
+          </div>
+          <div class="form-error" id="renewFormError"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-outline" id="renewModalCancel">Cancel</button>
+            <button type="submit" class="btn btn-primary">Renew Cycle</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIN CONFIRM MODAL -->
+  <div class="modal-bg" id="pinModal" style="display:none">
+    <div class="modal-box modal-sm">
+      <div class="modal-hd">
+        <span>Confirm Action</span>
+        <button class="modal-close" id="pinModalClose">✕</button>
+      </div>
+      <div class="modal-bd">
+        <p id="pinMessage" class="pin-message"></p>
+        <div class="field-group">
+          <label>Enter your password to confirm</label>
+          <input type="password" id="pinInput" placeholder="Your password"/>
+        </div>
+        <div class="form-error" id="pinError"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" id="pinCancel">Cancel</button>
+          <button type="button" class="btn btn-danger" id="pinConfirm">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+  <script type="module" src="../js/manager.js"></script>
+</body>
+</html>
