@@ -70,6 +70,13 @@ function switchTab(name) {
     p.classList.toggle("active", p.id === "tab-" + name));
   // Re-init My Leave if not loaded yet
   if (name === "myleave" && !MGR_EMP) initMyLeave();
+  // Reset filters when returning to dashboard
+  if (name === "dashboard") {
+    document.getElementById("staffSearch").value = "";
+    document.getElementById("deptFilter").value  = "all";
+    document.getElementById("groupFilter").value = "all";
+    renderStaffTable();
+  }
 }
 document.querySelectorAll(".nav-tab,.mob-tab").forEach(t =>
   t.addEventListener("click", () => switchTab(t.dataset.tab)));
@@ -132,6 +139,55 @@ function updateStats() {
   document.getElementById("statClash").textContent    = requests.filter(r => r.hasClash && r.status === "Pending").length;
   document.getElementById("statRenewals").textContent = employees.filter(isRenewalDue).length;
 }
+
+// ── Dashboard filter ─────────────────────────────────────────────
+window.filterDashboard = (type) => {
+  const today = todayStr();
+  const tbody = document.getElementById("staffTableBody");
+  let emps = [...employees];
+
+  if (type === "onleave") {
+    const onLeaveIds = new Set(requests.filter(r =>
+      r.status === "Approved" && r.startDate <= today && r.endDate >= today).map(r => r.employeeId));
+    emps = emps.filter(e => onLeaveIds.has(e.id));
+  } else if (type === "renewal") {
+    emps = emps.filter(e => isRenewalDue(e));
+  }
+
+  emps.sort((a,b) => (a.name||"").localeCompare(b.name||""));
+  const onLeaveSet = new Set(requests.filter(r =>
+    r.status === "Approved" && r.startDate <= today && r.endDate >= today).map(r => r.employeeId));
+
+  if (!emps.length) {
+    tbody.innerHTML = `<tr><td colspan="10" class="tbl-empty">No employees found.</td></tr>`; return;
+  }
+  tbody.innerHTML = emps.map(emp => {
+    const used = emp.leaveUsed||0, ent = emp.entitlement||0, rem = Math.max(0,ent-used);
+    const unpaid = emp.unpaidUsed||0;
+    const grpName = groups.find(g => g.id === emp.groupId)?.name || "--";
+    const cs = emp.cycleStart, ce = emp.cycleEnd || cycleEnd(cs || today);
+    const onLeave = onLeaveSet.has(emp.id);
+    const renewal = isRenewalDue(emp);
+    return `<tr class="row-expand" onclick="expandEmployee('${emp.id}')">
+      <td class="col-sticky">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="group-avatar" style="width:30px;height:30px;font-size:11px">${initials(emp.name)}</div>
+          <div>
+            <div style="font-weight:600">${emp.name||"--"}</div>
+            ${onLeave?`<span style="font-size:10px;color:var(--green)">● On Leave</span>`:""}
+            ${renewal?`<span style="font-size:10px;color:var(--orange)">⚠ Renewal Due</span>`:""}
+          </div>
+        </div>
+      </td>
+      <td>${deptBadge(emp.dept)}</td>
+      <td>${grpName}</td>
+      <td>${emp.dept==="DO"?(emp.pattern||"--"):"Mon–Thu"}</td>
+      <td>${ent} days</td><td>${used} days</td><td>${rem} days</td><td>${unpaid} days</td>
+      <td style="font-size:11px;color:var(--gray-500)">${fmtDate(cs)} – ${fmtDate(ce)}</td>
+      <td>${onLeave?statusBadge("Approved"):`<span style="color:var(--gray-300);font-size:11px">Available</span>`}</td>
+    </tr>`;
+  }).join("");
+};
 
 // ── Staff table ──────────────────────────────────────────────────
 function renderStaffTable() {
@@ -232,6 +288,9 @@ function renderApprovals() {
   let list = [...requests];
   if (filter !== "all") list = list.filter(r => r.status === filter);
   list.sort((a,b) => {
+    // Edit requests first, then pending, then rest
+    if (a.editRequested && !b.editRequested) return -1;
+    if (b.editRequested && !a.editRequested) return 1;
     if (a.status==="Pending" && b.status!=="Pending") return -1;
     if (b.status==="Pending" && a.status!=="Pending") return 1;
     return (b.submittedAt?.seconds||0)-(a.submittedAt?.seconds||0);
@@ -250,11 +309,18 @@ function renderApprovals() {
       <td>${r.hasClash?`<span class="clash-flag">⚠️ ${r.clashingWith?.length||0}</span>`:`<span class="no-clash">—</span>`}</td>
       <td style="font-size:11px;color:var(--gray-400)">${fmtDateTime(r.submittedAt)}</td>
       <td>${statusBadge(r.status)}</td>
-      <td>${r.status==="Pending"?`
-        <div style="display:flex;gap:4px">
-          <button class="btn btn-xs btn-success" onclick="approveReq('${r.id}','${r.employeeId}')">Approve</button>
-          <button class="btn btn-xs btn-danger"  onclick="rejectReq('${r.id}')">Reject</button>
-        </div>`:"--"}
+      <td>
+        ${r.status==="Pending"?`
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-xs btn-success" onclick="approveReq('${r.id}','${r.employeeId}')">Approve</button>
+            <button class="btn btn-xs btn-danger"  onclick="rejectReq('${r.id}')">Reject</button>
+          </div>`:
+        r.editRequested && r.status==="Approved"?`
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <span style="font-size:10px;color:var(--orange);font-weight:600">✏️ Edit Requested</span>
+            <button class="btn btn-xs btn-success" onclick="allowEdit('${r.id}','${r.employeeEmail}','${r.employeeName}')">Allow Edit</button>
+            <button class="btn btn-xs btn-danger"  onclick="denyEdit('${r.id}','${r.employeeEmail}','${r.employeeName}')">Deny</button>
+          </div>`:"--"}
       </td>
     </tr>`).join("");
 }
@@ -656,6 +722,48 @@ function renderAuditLog(items) {
       </div>
     </div>`).join("");
 }
+
+// ── Allow / Deny Edit ────────────────────────────────────────────
+window.allowEdit = async (reqId, empEmail, empName) => {
+  try {
+    await updateDoc(doc(db, "leaveRequests", reqId), {
+      status: "EditAllowed",
+      editRequested: false
+    });
+    if (empEmail) sendEmail(
+      empEmail,
+      "Edit Request Approved",
+      `Hi ${empName},
+
+Your request to edit your leave has been approved.
+Please log in and make your changes from My History.
+
+Regards,
+Annual Leave System`
+    );
+    toast("Edit allowed — staff can now edit their request.");
+  } catch(err) { toast("Failed.", "error"); console.error(err); }
+};
+
+window.denyEdit = async (reqId, empEmail, empName) => {
+  try {
+    await updateDoc(doc(db, "leaveRequests", reqId), {
+      editRequested: false
+    });
+    if (empEmail) sendEmail(
+      empEmail,
+      "Edit Request Denied",
+      `Hi ${empName},
+
+Your request to edit your approved leave has been denied.
+Please contact your manager for further information.
+
+Regards,
+Annual Leave System`
+    );
+    toast("Edit request denied.");
+  } catch(err) { toast("Failed.", "error"); console.error(err); }
+};
 
 // ── MY LEAVE ─────────────────────────────────────────────────────
 let MGR_EMP = null;
