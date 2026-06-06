@@ -85,11 +85,8 @@ document.getElementById("auditFilter").addEventListener("change",    () => rende
 function listenEmployees() {
   onSnapshot(collection(db, "employees"), snap => {
     employees = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // Only render after groups are loaded too
-    if (groups.length > 0 || employees.length === 0) {
-      renderStaffTable();
-      renderEmpTable();
-    }
+    renderStaffTable();
+    renderEmpTable();
     updateStats();
   });
 }
@@ -151,7 +148,7 @@ function renderStaffTable() {
   emps.sort((a, b) => (a.name||"").localeCompare(b.name||""));
 
   if (!emps.length) {
-    tbody.innerHTML = `<tr><td colspan="12" class="tbl-empty">No employees found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="tbl-empty">No employees found.</td></tr>`;
     return;
   }
 
@@ -186,16 +183,8 @@ function renderStaffTable() {
       <td>${used} days</td>
       <td>${rem} days</td>
       <td>${unpaid} days</td>
-      <td>${pbar(used, ent)}</td>
       <td style="font-size:11px;color:var(--gray-500)">${fmtDate(cs)} – ${fmtDate(ce)}</td>
       <td>${onLeave ? statusBadge("Approved") : `<span style="color:var(--gray-300);font-size:11px">Available</span>`}</td>
-      <td onclick="event.stopPropagation()">
-        <div style="display:flex;gap:4px;flex-wrap:wrap">
-          <button class="btn btn-xs btn-success" onclick="openRenewModal('${emp.id}')">Renew</button>
-          <button class="btn btn-xs btn-outline-sm" onclick="openEditEmp('${emp.id}')">Edit</button>
-          <button class="btn btn-xs btn-danger" onclick="removeEmployee('${emp.id}')">✕</button>
-        </div>
-      </td>
     </tr>`;
   }).join("");
 }
