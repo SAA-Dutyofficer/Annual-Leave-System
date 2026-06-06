@@ -276,6 +276,12 @@ function renderHistory() {
           ${r.status==="Pending"?`
             <button class="btn btn-outline-sm btn-xs" onclick="openEditModal('${r.id}')">Edit</button>
             <button class="btn btn-xs" style="background:var(--red-light);color:var(--red)" onclick="cancelRequest('${r.id}')">Cancel</button>`:""}
+          ${r.status==="Approved" && !r.editRequested?`
+            <button class="btn btn-outline-sm btn-xs" onclick="requestEdit('${r.id}')">Request Edit</button>`:""}
+          ${r.status==="Approved" && r.editRequested?`
+            <span style="font-size:11px;color:var(--orange)">⏳ Edit Requested</span>`:""}
+          ${r.status==="EditAllowed"?`
+            <button class="btn btn-outline-sm btn-xs" onclick="openEditModal('${r.id}')">Edit Now</button>`:""}
         </div>
       </div>
     </div>`).join("");
@@ -615,6 +621,23 @@ window.cancelRequest = async (id) => {
   if (!confirm("Cancel this leave request?")) return;
   try { await updateDoc(doc(db,"leaveRequests",id),{status:"Cancelled"}); toast("Request cancelled."); }
   catch { toast("Failed to cancel.","error"); }
+};
+
+// ── Request Edit ─────────────────────────────────────────────────
+window.requestEdit = async (id) => {
+  if (!confirm("Request manager approval to edit this leave?")) return;
+  try {
+    await updateDoc(doc(db, "leaveRequests", id), {
+      editRequested: true,
+      editRequestedAt: serverTimestamp()
+    });
+    notifyManagers(
+      `Edit Request — ${EMP.name}`,
+      `${EMP.name} has requested to edit their approved leave request.
+Please review and allow or deny the edit in the Approvals tab.`
+    );
+    toast("Edit request sent to manager.");
+  } catch { toast("Failed to send request.", "error"); }
 };
 
 // ── Change Password ───────────────────────────────────────────────
