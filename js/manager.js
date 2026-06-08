@@ -2,7 +2,7 @@
 import { auth, db } from "./firebase.js";
 import { onAuthStateChanged, signOut,
          createUserWithEmailAndPassword,
-         EmailAuthProvider, reauthenticateWithCredential }
+         EmailAuthProvider, reauthenticateWithCredential, updatePassword }
   from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth as getSecondAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -265,7 +265,7 @@ window.expandEmployee = (empId) => {
       <td>${i+1}</td><td>${r.leaveType}</td>
       <td>${fmtDate(r.startDate)}</td><td>${fmtDate(r.endDate)}</td>
       <td>${r.days}</td><td>${statusBadge(r.status)}</td>
-      <td>${r.hasClash?`<span class="clash-flag">⚠️</span>`:`<span class="no-clash">—</span>`}</td>
+      <td>${r.hasClash && r.clashingWith?.length?`<span class="clash-flag" style="font-size:10px">⚠️ ${r.clashingWith.join(', ')}</span>`:`<span class="no-clash">—</span>`}</td>
       <td style="font-size:11px;color:var(--gray-400)">${r.notes||"--"}</td>
       <td>${r.status==="Pending"?`
         <div style="display:flex;gap:4px">
@@ -306,7 +306,7 @@ function renderApprovals() {
       <td>${r.leaveType}</td>
       <td>${fmtDate(r.startDate)}</td><td>${fmtDate(r.endDate)}</td>
       <td>${r.days}</td>
-      <td>${r.hasClash?`<span class="clash-flag">⚠️ ${r.clashingWith?.length||0}</span>`:`<span class="no-clash">—</span>`}</td>
+      <td>${r.hasClash && r.clashingWith?.length?`<span class="clash-flag" title="${r.clashingWith.join(', ')}">⚠️ ${r.clashingWith.join(', ')}</span>`:`<span class="no-clash">—</span>`}</td>
       <td style="font-size:11px;color:var(--gray-400)">${fmtDateTime(r.submittedAt)}</td>
       <td>${statusBadge(r.status)}</td>
       <td>
@@ -924,6 +924,36 @@ function renderMgrHistory() {
       <div class="req-notes">${r.notes||""}</div>
     </div>`).join("");
 }
+
+// ── Manager Change Password ──────────────────────────────────────
+document.getElementById("mgrChangePwBtn").addEventListener("click", () => {
+  document.getElementById("mgrChangePwForm").reset();
+  document.getElementById("mgrChangePwError").textContent = "";
+  document.getElementById("mgrChangePwSuccess").textContent = "";
+  document.getElementById("mgrChangePwModal").style.display = "flex";
+});
+document.getElementById("mgrChangePwClose").addEventListener("click",  () => document.getElementById("mgrChangePwModal").style.display = "none");
+document.getElementById("mgrChangePwCancel").addEventListener("click", () => document.getElementById("mgrChangePwModal").style.display = "none");
+document.getElementById("mgrChangePwForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const currentPw = document.getElementById("mgrCurrentPw").value;
+  const newPw     = document.getElementById("mgrNewPw").value;
+  const confirmPw = document.getElementById("mgrConfirmPw").value;
+  const errEl     = document.getElementById("mgrChangePwError");
+  const succEl    = document.getElementById("mgrChangePwSuccess");
+  errEl.textContent = ""; succEl.textContent = "";
+  if (newPw.length < 6) { errEl.textContent = "New password must be at least 6 characters."; return; }
+  if (newPw !== confirmPw) { errEl.textContent = "Passwords do not match."; return; }
+  try {
+    const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPw);
+    await reauthenticateWithCredential(auth.currentUser, credential);
+    await updatePassword(auth.currentUser, newPw);
+    succEl.textContent = "Password updated successfully!";
+    document.getElementById("mgrChangePwForm").reset();
+  } catch(err) {
+    errEl.textContent = err.code === "auth/wrong-password" ? "Current password is incorrect." : "Failed to update password.";
+  }
+});
 
 // ── PIN confirmation ─────────────────────────────────────────────
 let pinCallback = null;
