@@ -306,7 +306,11 @@ function renderApprovals() {
       <td>${r.leaveType}</td>
       <td>${fmtDate(r.startDate)}</td><td>${fmtDate(r.endDate)}</td>
       <td>${r.days}</td>
-      <td>${r.hasClash && r.clashingWith?.length?`<span class="clash-flag" title="${r.clashingWith.join(', ')}">⚠️ ${r.clashingWith.join(', ')}</span>`:`<span class="no-clash">—</span>`}</td>
+      <td>${r.hasClash && r.clashingWith?.length?`<span class="clash-flag">⚠️ ${r.clashingWith.map(name => {
+        const emp = employees.find(e => e.name === name);
+        const grp = emp ? (groups.find(g => g.id === emp.groupId)?.name || '') : '';
+        return grp ? name + ' (' + grp + ')' : name;
+      }).join(', ')}</span>`:`<span class="no-clash">—</span>`}</td>
       <td style="font-size:11px;color:var(--gray-400)">${fmtDateTime(r.submittedAt)}</td>
       <td>${statusBadge(r.status)}</td>
       <td>
