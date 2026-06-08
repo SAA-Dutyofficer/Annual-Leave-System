@@ -45,6 +45,8 @@ onAuthStateChanged(auth, async (user) => {
   if (EMP.dept === "DO") {
     document.getElementById("doPatternFields").style.display = "block";
   }
+  // GD staff: calendar renders automatically with Mon-Thu working days
+  // No pattern needed — isGDWorkDay handles Mon-Thu automatically
 
   renderBalance();
   renderDualCalendar();
@@ -376,7 +378,10 @@ function buildMonthHTML(year, month) {
     const cur = new Date(r.startDate + "T00:00:00");
     const end = new Date(r.endDate   + "T00:00:00");
     while (cur <= end) {
-      const s = cur.toISOString().split("T")[0];
+      // Use local date to avoid UTC timezone shift
+      const s = cur.getFullYear() + "-" +
+        String(cur.getMonth()+1).padStart(2,"0") + "-" +
+        String(cur.getDate()).padStart(2,"0");
       if (r.status === "Approved") takenDates.add(s); else pendingDates.add(s);
       cur.setDate(cur.getDate() + 1);
     }
