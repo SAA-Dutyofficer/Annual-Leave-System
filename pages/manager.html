@@ -437,6 +437,35 @@
     </div>
   </div>
 
+  <!-- CHANGE PASSWORD MODAL -->
+  <div class="modal-bg" id="mgrChangePwModal" style="display:none">
+    <div class="modal-box modal-sm">
+      <div class="modal-hd"><span>Change Password</span><button class="modal-close" id="mgrChangePwClose">✕</button></div>
+      <div class="modal-bd">
+        <form id="mgrChangePwForm">
+          <div class="field-group">
+            <label>Current Password</label>
+            <input type="password" id="mgrCurrentPw" placeholder="Your current password" required/>
+          </div>
+          <div class="field-group">
+            <label>New Password</label>
+            <input type="password" id="mgrNewPw" placeholder="Min 6 characters" required/>
+          </div>
+          <div class="field-group">
+            <label>Confirm New Password</label>
+            <input type="password" id="mgrConfirmPw" placeholder="Repeat new password" required/>
+          </div>
+          <div class="form-error" id="mgrChangePwError"></div>
+          <div class="auth-success" id="mgrChangePwSuccess"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-outline" id="mgrChangePwCancel">Cancel</button>
+            <button type="submit" class="btn btn-primary">Update Password</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <div class="toast-wrap" id="toastWrap"></div>
   <script type="module" src="../js/manager.js"></script>
 </body>
