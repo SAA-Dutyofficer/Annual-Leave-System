@@ -483,10 +483,16 @@ function updateDaysPreview() {
     if (days>avail) { lw.style.display="block"; lw.textContent=`⚠️ ${leaveType} allowance: ${avail} day(s) remaining.`; } else lw.style.display="none";
   } else lw.style.display="none";
 
-  // Clash
-  const clashing = detectClashes(s, e, allRequests.filter(r => r.employeeId!==ME.uid));
+  // Clash — group only
+  const groupRequests = allRequests.filter(r => r.employeeId!==ME.uid && r.groupId===EMP.groupId && EMP.groupId);
+  const clashing = detectClashesWithDates(s, e, groupRequests);
   const cw = document.getElementById("clashWarning");
-  if (clashing.length>=2) { cw.style.display="block"; document.getElementById("clashMsg").textContent=`${clashing.length} other staff on leave: ${clashing.join(", ")}`; } else cw.style.display="none";
+  if (clashing.length > 0) {
+    cw.style.display="block";
+    document.getElementById("clashMsg").innerHTML = clashing.map(c =>
+      `⚠️ <strong>${c.name}</strong> is on leave: ${fmtDate(c.startDate)} – ${fmtDate(c.endDate)}`
+    ).join("<br/>");
+  } else cw.style.display="none";
 }
 
 // Also allow manual date input to update calendar
@@ -548,14 +554,24 @@ document.getElementById("leaveForm").addEventListener("submit", async (e) => {
     const avail = cfg.maxDays-(EMP[balanceField(leaveType)]||0);
     if (days>avail) { errEl.textContent=`${leaveType} allowance exceeded. ${avail} day(s) remaining.`; return; }
   }
-  const clashing = detectClashes(s, e2, allRequests.filter(r => r.employeeId!==ME.uid));
+  const groupReqs = allRequests.filter(r => r.employeeId!==ME.uid && r.groupId===EMP.groupId && EMP.groupId);
+  const clashDetails = detectClashesWithDates(s, e2, groupReqs);
+  const hasClash = clashDetails.length > 0;
+
+  // Show clash confirm if there are clashes
+  if (hasClash) {
+    const clashNames = clashDetails.map(c => `${c.name} (${fmtDate(c.startDate)} – ${fmtDate(c.endDate)})`).join(", ");
+    const proceed = await showClashConfirm(clashNames);
+    if (!proceed) return;
+  }
+
   try {
     await addDoc(collection(db,"leaveRequests"), {
       employeeId: ME.uid, employeeName: EMP.name, employeeDept: EMP.dept, employeeEmail: EMP.email,
       groupId: EMP.groupId||null, leaveType, customReason: customReason||null,
       requestPattern: EMP.dept==="DO"?pattern:null, requestRosterStart: EMP.dept==="DO"?rosterStart:null,
       startDate: s, endDate: e2, days, notes, status: "Pending",
-      hasClash: clashing.length>=2, clashingWith: clashing,
+      hasClash: hasClash, clashingWith: clashDetails.map(c => c.name),
       submittedAt: serverTimestamp(), editedAt: null, cycleId: EMP.cycleId||null
     });
     // Notify managers of new request
@@ -665,6 +681,46 @@ document.getElementById("changePwForm").addEventListener("submit", async (e) => 
     document.getElementById("changePwForm").reset();
   } catch(err){errEl.textContent=err.code==="auth/wrong-password"?"Current password is incorrect.":"Failed to update password.";}
 });
+
+// ── Clash helpers ────────────────────────────────────────────────
+function detectClashesWithDates(newStart, newEnd, requests) {
+  const clashes = [];
+  const seen = new Set();
+  for (const r of requests) {
+    if (r.status === "Rejected" || r.status === "Cancelled") continue;
+    if (r.endDate < newStart || r.startDate > newEnd) continue;
+    if (seen.has(r.employeeId)) continue;
+    seen.add(r.employeeId);
+    clashes.push({ name: r.employeeName, startDate: r.startDate, endDate: r.endDate });
+  }
+  return clashes;
+}
+
+function showClashConfirm(clashNames) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-bg";
+    overlay.style.display = "flex";
+    overlay.innerHTML = `
+      <div class="modal-box modal-sm">
+        <div class="modal-hd"><span>⚠️ Leave Clash Detected</span></div>
+        <div class="modal-bd">
+          <div style="background:var(--orange-light);color:var(--orange);padding:12px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;">
+            The following teammate(s) from your group are on leave during the same period:<br/><br/>
+            <strong>${clashNames}</strong>
+          </div>
+          <p style="font-size:14px;color:var(--gray-700);margin:0 0 16px;">Do you still want to submit this request?</p>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-outline" id="clashCancelBtn">Cancel</button>
+            <button type="button" class="btn btn-primary" id="clashContinueBtn">Yes, Submit Anyway</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById("clashContinueBtn").addEventListener("click", () => { overlay.remove(); resolve(true); });
+    document.getElementById("clashCancelBtn").addEventListener("click",   () => { overlay.remove(); resolve(false); });
+  });
+}
 
 // ── Team ──────────────────────────────────────────────────────────
 async function loadTeam() {
