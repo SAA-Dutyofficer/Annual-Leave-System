@@ -15,7 +15,6 @@ service cloud.firestore {
 
     match /employees/{uid} {
       allow read: if isAuth();
-      // Staff can update their own employee record (for self-renewal)
       allow update: if isAuth() && (request.auth.uid == uid || isManager());
       allow create, delete: if isManager();
     }
@@ -37,7 +36,6 @@ service cloud.firestore {
 
     match /cycleHistory/{docId} {
       allow read: if isAuth();
-      // Staff can create their own cycle history (self-renewal)
       allow create: if isAuth();
       allow update, delete: if isManager();
     }
