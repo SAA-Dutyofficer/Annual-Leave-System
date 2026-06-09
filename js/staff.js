@@ -26,7 +26,11 @@ let calEndDate   = null;
 let calSelectingEnd = false;
 
 // ── Auth guard ───────────────────────────────────────────────────
+let authResolved = false;
+setTimeout(() => { if (!authResolved) location.reload(); }, 6000);
+
 onAuthStateChanged(auth, async (user) => {
+  authResolved = true;
   if (!user) { location.href = "../index.html"; return; }
   ME = user;
   const uSnap = await getDoc(doc(db, "users", user.uid));
