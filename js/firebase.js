@@ -5,7 +5,7 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase
 
 const firebaseConfig = {
   apiKey: "AIzaSyDRFzz7OPlRyjJekZh6rbMNz6teQJ6yd_M",
-  authDomain: "annual-leave-system-83d7a.firebaseapp.com",
+  authDomain: "annual-leave-system-83d7a.web.app",
   projectId: "annual-leave-system-83d7a",
   storageBucket: "annual-leave-system-83d7a.firebasestorage.app",
   messagingSenderId: "1047300958404",
