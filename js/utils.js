@@ -1,199 +1,112 @@
-// js/utils.js — shared helper functions
+// js/auth.js
+import { auth, db } from "./firebase.js";
+import { signInWithEmailAndPassword, onAuthStateChanged,
+         sendPasswordResetEmail }
+  from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { doc, getDoc }
+  from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// ── Date formatting ──────────────────────────────────────────────
-export function fmtDate(str) {
-  if (!str) return "--";
-  const d = new Date(str + "T00:00:00");
-  if (isNaN(d)) return str;
-  return d.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
-}
+// Only redirect if already logged in and on login page
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { clearCache(); return; }
+  if (window.location.pathname.includes("/pages/")) return;
 
-export function fmtDateTime(ts) {
-  if (!ts) return "--";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric",
-    hour:"2-digit", minute:"2-digit" });
-}
-
-export function todayStr() {
-  const d = new Date();
-  return d.getFullYear() + "-" +
-    String(d.getMonth()+1).padStart(2,"0") + "-" +
-    String(d.getDate()).padStart(2,"0");
-}
-
-export function addDays(dateStr, n) {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split("T")[0];
-}
-
-export function dateAddYears(dateStr, n) {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setFullYear(d.getFullYear() + n);
-  return d.toISOString().split("T")[0];
-}
-
-// ── Leave type config ────────────────────────────────────────────
-export const LEAVE_TYPES = {
-  Annual:    { label: "Annual Leave",    deductsBalance: true,  maxDays: null, color: "#3B82F6" },
-  Unpaid:    { label: "Unpaid Leave",    deductsBalance: false, maxDays: null, color: "#6B7280" },
-  Paternity: { label: "Paternity Leave", deductsBalance: false, maxDays: 4,    color: "#8B5CF6" },
-  Hajj:      { label: "Hajj Leave",      deductsBalance: false, maxDays: 30,   color: "#F59E0B" },
-  Emergency: { label: "Emergency Leave", deductsBalance: false, maxDays: null, color: "#EF4444" },
-  Custom:    { label: "Custom / Other",  deductsBalance: false, maxDays: null, color: "#10B981" }
-};
-
-export function leaveTypeOptions(selected = "Annual") {
-  return Object.entries(LEAVE_TYPES).map(([val, cfg]) =>
-    `<option value="${val}" ${val === selected ? "selected" : ""}>${cfg.label}</option>`
-  ).join("");
-}
-
-export function leaveTypeBadge(type) {
-  const cfg = LEAVE_TYPES[type] || LEAVE_TYPES.Custom;
-  return `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:${cfg.color}20;color:${cfg.color}">${cfg.label||type}</span>`;
-}
-
-// ── Working day checks ───────────────────────────────────────────
-export function isGDWorkDay(dateStr) {
-  const d = new Date(dateStr + "T00:00:00");
-  const wd = d.getDay();
-  return wd >= 1 && wd <= 4;
-}
-
-export function isDOWorkDay(dateStr, pattern, rosterStart) {
-  if (!pattern || !rosterStart) return false;
-  const m = pattern.toUpperCase().match(/^(\d+)W(\d+)O$/);
-  if (!m) return false;
-  const workDays = parseInt(m[1]);
-  const cycleLen = workDays + parseInt(m[2]);
-  const d  = new Date(dateStr + "T00:00:00");
-  const r  = new Date(rosterStart + "T00:00:00");
-  const diff = Math.round((d - r) / 86400000);
-  const pos  = ((diff % cycleLen) + cycleLen) % cycleLen;
-  return pos < workDays;
-}
-
-// ── Day counting ─────────────────────────────────────────────────
-export function countWorkDays(startStr, endStr, dept, pattern, rosterStart) {
-  if (!startStr || !endStr) return 0;
-  const start = new Date(startStr + "T00:00:00");
-  const end   = new Date(endStr   + "T00:00:00");
-  if (end < start) return 0;
-
-  let cnt = 0;
-  const cur = new Date(start);
-
-  if (dept === "GD") {
-    while (cur <= end) {
-      const wd = cur.getDay();
-      if (wd >= 1 && wd <= 4) cnt++;
-      cur.setDate(cur.getDate() + 1);
-    }
-  } else {
-    const m = (pattern || "").toUpperCase().match(/^(\d+)W(\d+)O$/);
-    if (!m || !rosterStart) return 0;
-    const workDays = parseInt(m[1]);
-    const cycleLen = workDays + parseInt(m[2]);
-    const r = new Date(rosterStart + "T00:00:00");
-    while (cur <= end) {
-      const diff = Math.round((cur - r) / 86400000);
-      const pos  = ((diff % cycleLen) + cycleLen) % cycleLen;
-      if (pos < workDays) cnt++;
-      cur.setDate(cur.getDate() + 1);
-    }
+  // Always fetch fresh role — don't rely on cache for redirect
+  try {
+    const role = await getRole(user.uid);
+    setCache(user.uid, role);
+    redirect(role);
+  } catch {
+    // If Firestore fails, go to login
+    clearCache();
   }
-  return cnt;
-}
+});
 
-// ── Clash detection ──────────────────────────────────────────────
-export function detectClashes(newStart, newEnd, requests, excludeId = null) {
-  const names = [];
-  for (const r of requests) {
-    if (r.id === excludeId) continue;
-    if (r.status === "Rejected" || r.status === "Cancelled") continue;
-    if (r.endDate < newStart || r.startDate > newEnd) continue;
-    names.push(r.employeeName);
+// Login
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("loginError");
+  const btn   = document.getElementById("loginBtn");
+  const txtEl = btn.querySelector(".btn-text");
+  const ldrEl = btn.querySelector(".btn-loader");
+  errEl.textContent = "";
+  txtEl.textContent = "Signing in…";
+  ldrEl.style.display = "inline";
+  btn.disabled = true;
+
+  try {
+    const email = document.getElementById("loginEmail").value.trim();
+    const pass  = document.getElementById("loginPassword").value;
+    const cred  = await signInWithEmailAndPassword(auth, email, pass);
+    const role  = await getRole(cred.user.uid);
+    setCache(cred.user.uid, role);
+    redirect(role);
+  } catch(err) {
+    const code = err.code;
+    errEl.textContent =
+      code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found"
+        ? "Incorrect email or password."
+        : code === "auth/too-many-requests"
+        ? "Too many attempts. Please try again later."
+        : "Sign in failed. Please try again.";
+    txtEl.textContent = "Sign In";
+    ldrEl.style.display = "none";
+    btn.disabled = false;
   }
-  return [...new Set(names)];
+});
+
+// Toggle password
+document.getElementById("togglePw").addEventListener("click", () => {
+  const inp = document.getElementById("loginPassword");
+  inp.type = inp.type === "password" ? "text" : "password";
+});
+
+// Forgot password
+document.getElementById("forgotLink").addEventListener("click", (e) => {
+  e.preventDefault();
+  document.getElementById("loginView").style.display  = "none";
+  document.getElementById("resetView").style.display  = "block";
+  const email = document.getElementById("loginEmail").value.trim();
+  if (email) document.getElementById("resetEmail").value = email;
+});
+
+document.getElementById("backToLogin").addEventListener("click", (e) => {
+  e.preventDefault();
+  document.getElementById("resetView").style.display  = "none";
+  document.getElementById("loginView").style.display  = "block";
+  document.getElementById("resetError").textContent   = "";
+  document.getElementById("resetSuccess").textContent = "";
+});
+
+document.getElementById("resetForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email  = document.getElementById("resetEmail").value.trim();
+  const errEl  = document.getElementById("resetError");
+  const succEl = document.getElementById("resetSuccess");
+  errEl.textContent = ""; succEl.textContent = "";
+  try {
+    await sendPasswordResetEmail(auth, email);
+    succEl.textContent = "Reset link sent! Check your email inbox.";
+  } catch(err) {
+    errEl.textContent = err.code === "auth/user-not-found"
+      ? "No account found with this email."
+      : "Failed to send reset email. Please try again.";
+  }
+});
+
+async function getRole(uid) {
+  const snap = await getDoc(doc(db, "users", uid));
+  return snap.exists() ? (snap.data().role || "staff") : "staff";
 }
 
-// ── HTML helpers ─────────────────────────────────────────────────
-export function statusBadge(status) {
-  const map = {
-    Pending:   "sb-pending",
-    Approved:  "sb-approved",
-    Rejected:  "sb-rejected",
-    Cancelled: "sb-cancelled"
-  };
-  return `<span class="status-badge ${map[status]||"sb-pending"}">${status||"Pending"}</span>`;
+function redirect(role) {
+  window.location.href = role === "manager" ? "pages/manager.html" : "pages/staff.html";
 }
 
-export function deptBadge(dept) {
-  return `<span class="dept-badge db-${dept}">${dept}</span>`;
+function setCache(uid, role) {
+  try { localStorage.setItem("als_uid", uid); localStorage.setItem("als_role", role); } catch {}
 }
 
-export function roleBadge(role) {
-  return `<span class="role-badge ${role==="manager"?"rb-manager":"rb-staff"}">${role==="manager"?"Manager":"Staff"}</span>`;
-}
-
-export function pbar(used, total) {
-  if (!total) return "--";
-  const pct = Math.min(100, Math.round(used / total * 100));
-  const cls = pct >= 90 ? "danger" : pct >= 70 ? "warn" : "";
-  return `<div class="pbar-wrap">
-    <div class="pbar"><div class="pbar-fill ${cls}" style="width:${pct}%"></div></div>
-    <span class="pbar-pct">${pct}%</span>
-  </div>`;
-}
-
-// ── Toast notifications ──────────────────────────────────────────
-export function toast(msg, type = "success") {
-  const wrap = document.getElementById("toastWrap");
-  if (!wrap) return;
-  const el = document.createElement("div");
-  el.className = `toast toast-${type}`;
-  el.textContent = msg;
-  wrap.appendChild(el);
-  setTimeout(() => {
-    el.style.opacity = "0";
-    el.style.transition = "opacity .3s";
-    setTimeout(() => el.remove(), 300);
-  }, 3800);
-}
-
-// ── Cycle helpers ────────────────────────────────────────────────
-export function cycleEnd(cycleStart) {
-  const d = new Date(cycleStart + "T00:00:00");
-  d.setFullYear(d.getFullYear() + 1);
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().split("T")[0];
-}
-
-export function isRenewalDue(emp) {
-  if (!emp.cycleEnd) return false;
-  const end = new Date(emp.cycleEnd + "T00:00:00");
-  const today = new Date();
-  const diff = Math.ceil((end - today) / 86400000);
-  return diff <= 30;
-}
-
-// ── Initials avatar ──────────────────────────────────────────────
-export function initials(name) {
-  if (!name) return "?";
-  return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
-}
-
-// ── Leave type balance tracker keys ─────────────────────────────
-export function balanceField(leaveType) {
-  const map = {
-    Annual:    "leaveUsed",
-    Unpaid:    "unpaidUsed",
-    Paternity: "paternityUsed",
-    Hajj:      "hajjUsed",
-    Emergency: "emergencyUsed",
-    Custom:    "customUsed"
-  };
-  return map[leaveType] || "customUsed";
+function clearCache() {
+  try { localStorage.clear(); } catch {}
 }
