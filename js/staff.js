@@ -39,14 +39,11 @@ onAuthStateChanged(auth, async (user) => {
   if (!eSnap.exists()) { toast("Employee record not found. Contact your manager.", "error"); return; }
   EMP = { id: eSnap.id, ...eSnap.data() };
 
-  // Restore last used pattern/roster from previous requests
   await restoreLastRoster();
 
   if (EMP.dept === "DO") {
     document.getElementById("doPatternFields").style.display = "block";
   }
-  // GD staff: calendar renders automatically with Mon-Thu working days
-  // No pattern needed — isGDWorkDay handles Mon-Thu automatically
 
   renderBalance();
   renderDualCalendar();
@@ -57,7 +54,7 @@ onAuthStateChanged(auth, async (user) => {
   checkRenewal();
 });
 
-// ── Restore last roster from previous request ────────────────────
+// ── Restore last roster ──────────────────────────────────────────
 async function restoreLastRoster() {
   if (EMP.dept !== "DO") return;
   try {
@@ -69,12 +66,11 @@ async function restoreLastRoster() {
     const snap = await getDocs(q);
     if (!snap.empty) {
       const last = snap.docs[0].data();
-      if (last.requestPattern)     { EMP._lastPattern     = last.requestPattern;     }
-      if (last.requestRosterStart) { EMP._lastRosterStart = last.requestRosterStart; }
+      if (last.requestPattern)     EMP._lastPattern     = last.requestPattern;
+      if (last.requestRosterStart) EMP._lastRosterStart = last.requestRosterStart;
     }
   } catch {}
 
-  // Set form values: last used takes priority over employee default
   const pattern     = EMP._lastPattern     || EMP.pattern     || "";
   const rosterStart = EMP._lastRosterStart || EMP.rosterStart || "";
   if (pattern)     document.getElementById("fPattern").value     = pattern;
@@ -83,10 +79,7 @@ async function restoreLastRoster() {
 
 // ── Sign out ─────────────────────────────────────────────────────
 document.getElementById("logoutBtn").addEventListener("click", async () => {
-  localStorage.removeItem("als_role");
-  localStorage.removeItem("als_uid");
-  localStorage.removeItem("als_uid");
-  localStorage.removeItem("als_role");
+  localStorage.clear();
   await signOut(auth);
   location.href = "../index.html";
 });
@@ -126,7 +119,7 @@ function renderBalance() {
   document.getElementById("cycleInfo").textContent = `Cycle: ${fmtDate(cs)} – ${fmtDate(ce)} | ${EMP.dept} Staff`;
 }
 
-// ── Requests ──────────────────────────────────────────────────────
+// ── Listeners ────────────────────────────────────────────────────
 function listenMyRequests() {
   const q = query(collection(db,"leaveRequests"), where("employeeId","==",ME.uid), orderBy("submittedAt","desc"));
   onSnapshot(q, snap => {
@@ -137,7 +130,6 @@ function listenMyRequests() {
 function listenAllRequests() {
   onSnapshot(collection(db,"leaveRequests"), snap => {
     allRequests = snap.docs.map(d => ({ id:d.id, ...d.data() }));
-    // Refresh team view if loaded
     if (EMP && EMP.groupId) loadTeam();
   });
 }
@@ -217,7 +209,6 @@ async function showSelfRenewalModal(empData) {
         detail: `New cycle: ${fmtDate(cycleStartNew)} – ${fmtDate(cycleEndNew)} · ${days} days`,
         by: EMP.name, at: serverTimestamp()
       });
-      // Notify managers of self-renewal
       notifyManagers(
         `Self-Renewal — ${EMP.name}`,
         `${EMP.name} has self-renewed their leave cycle.\nNew cycle: ${fmtDate(cycleStartNew)} – ${fmtDate(cycleEndNew)}\nNew entitlement: ${days} days\n\nThis was automatic when their balance reached 0.`
@@ -341,19 +332,15 @@ function renderDualCalendar() {
   const cal2 = document.getElementById("cal2");
   if (!cal1 || !cal2) return;
 
-  // Month 1
   cal1.innerHTML = buildMonthHTML(calViewYear, calViewMonth);
-  // Month 2
   let m2 = calViewMonth + 1, y2 = calViewYear;
   if (m2 > 11) { m2 = 0; y2++; }
   cal2.innerHTML = buildMonthHTML(y2, m2);
 
-  // Update nav label
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const lbl = document.getElementById("calNavLabel");
   if (lbl) lbl.textContent = `${months[calViewMonth]} ${calViewYear}  –  ${months[m2]} ${y2}`;
 
-  // Attach click handlers
   document.querySelectorAll(".cal-day.cal-work, .cal-day.cal-taken, .cal-day.cal-pending").forEach(el => {
     el.addEventListener("click", () => {
       const dateStr = el.dataset.date;
@@ -367,10 +354,8 @@ function renderDualCalendar() {
 
 function buildMonthHTML(year, month) {
   const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-  const today  = new Date();
   const todayStr2 = todayStr();
 
-  // Build taken/pending sets
   const takenDates   = new Set();
   const pendingDates = new Set();
   myRequests.forEach(r => {
@@ -378,7 +363,6 @@ function buildMonthHTML(year, month) {
     const cur = new Date(r.startDate + "T00:00:00");
     const end = new Date(r.endDate   + "T00:00:00");
     while (cur <= end) {
-      // Use local date to avoid UTC timezone shift
       const s = cur.getFullYear() + "-" +
         String(cur.getMonth()+1).padStart(2,"0") + "-" +
         String(cur.getDate()).padStart(2,"0");
@@ -400,12 +384,11 @@ function buildMonthHTML(year, month) {
 
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-    const isToday = dateStr === todayStr2;
-    const isWork  = isWorkDay(dateStr);
+    const isToday   = dateStr === todayStr2;
+    const isWork    = isWorkDay(dateStr);
     const isTaken   = takenDates.has(dateStr);
     const isPending = pendingDates.has(dateStr);
 
-    // Check if in selected range
     const inRange = calStartDate && calEndDate && dateStr >= calStartDate && dateStr <= calEndDate;
     const isStart = dateStr === calStartDate;
     const isEnd   = dateStr === calEndDate;
@@ -427,8 +410,7 @@ function buildMonthHTML(year, month) {
 }
 
 function handleCalendarDayClick(dateStr) {
-  if (!calStartDate || calSelectingEnd === false && calStartDate && calEndDate) {
-    // Start fresh selection
+  if (!calStartDate || (calSelectingEnd === false && calStartDate && calEndDate)) {
     calStartDate    = dateStr;
     calEndDate      = null;
     calSelectingEnd = true;
@@ -450,7 +432,6 @@ function updateFormFromCalendar() {
   if (calStartDate) document.getElementById("fStartDate").value = calStartDate;
   if (calEndDate)   document.getElementById("fEndDate").value   = calEndDate;
 
-  // Show start/end hints
   if (calStartDate) {
     const ok = isWorkDay(calStartDate);
     document.getElementById("startHint").textContent = ok ? "✓ Valid working day" : "✗ Not a working day";
@@ -476,7 +457,6 @@ function updateDaysPreview() {
   document.getElementById("daysPreview").style.display = "block";
   document.getElementById("daysCount").textContent = days;
 
-  // Balance warnings
   const leaveType = document.getElementById("fLeaveType").value;
   const rem = (EMP.entitlement||0) - (EMP.leaveUsed||0);
   const bw = document.getElementById("balanceWarning");
@@ -488,7 +468,6 @@ function updateDaysPreview() {
     if (days>avail) { lw.style.display="block"; lw.textContent=`⚠️ ${leaveType} allowance: ${avail} day(s) remaining.`; } else lw.style.display="none";
   } else lw.style.display="none";
 
-  // Clash — group only
   const groupRequests = allRequests.filter(r => r.employeeId!==ME.uid && r.groupId===EMP.groupId && EMP.groupId);
   const clashing = detectClashesWithDates(s, e, groupRequests);
   const cw = document.getElementById("clashWarning");
@@ -500,7 +479,7 @@ function updateDaysPreview() {
   } else cw.style.display="none";
 }
 
-// Also allow manual date input to update calendar
+// Manual date input
 document.getElementById("fStartDate").addEventListener("change", () => {
   const val = document.getElementById("fStartDate").value;
   if (val) {
@@ -563,7 +542,6 @@ document.getElementById("leaveForm").addEventListener("submit", async (e) => {
   const clashDetails = detectClashesWithDates(s, e2, groupReqs);
   const hasClash = clashDetails.length > 0;
 
-  // Show clash confirm if there are clashes
   if (hasClash) {
     const clashNames = clashDetails.map(c => `${c.name} (${fmtDate(c.startDate)} – ${fmtDate(c.endDate)})`).join(", ");
     const proceed = await showClashConfirm(clashNames);
@@ -576,10 +554,9 @@ document.getElementById("leaveForm").addEventListener("submit", async (e) => {
       groupId: EMP.groupId||null, leaveType, customReason: customReason||null,
       requestPattern: EMP.dept==="DO"?pattern:null, requestRosterStart: EMP.dept==="DO"?rosterStart:null,
       startDate: s, endDate: e2, days, notes, status: "Pending",
-      hasClash: hasClash, clashingWith: clashDetails.map(c => c.name),
+      hasClash, clashingWith: clashDetails.map(c => c.name),
       submittedAt: serverTimestamp(), editedAt: null, cycleId: EMP.cycleId||null
     });
-    // Notify managers of new request
     notifyManagers(
       `New Leave Request — ${EMP.name}`,
       `${EMP.name} submitted a ${leaveType} leave request.\nFrom: ${fmtDate(s)} To: ${fmtDate(e2)}\nDays: ${days}${customReason?"\nReason: "+customReason:""}\nNotes: ${notes||"None"}`
@@ -590,8 +567,6 @@ document.getElementById("leaveForm").addEventListener("submit", async (e) => {
     document.getElementById("customReasonGroup").style.display="none";
     ["daysPreview","clashWarning","balanceWarning","limitWarning"].forEach(id => document.getElementById(id).style.display="none");
     document.getElementById("startHint").textContent=""; document.getElementById("endHint").textContent="";
-
-    // Restore pattern fields
     if (EMP.dept==="DO") {
       document.getElementById("fPattern").value     = pattern;
       document.getElementById("fRosterStart").value = rosterStart;
@@ -605,11 +580,11 @@ document.getElementById("leaveForm").addEventListener("submit", async (e) => {
 window.openEditModal = (id) => {
   const r = myRequests.find(x => x.id===id);
   if (!r) return;
-  document.getElementById("editRequestId").value  = id;
-  document.getElementById("editStart").value      = r.startDate;
-  document.getElementById("editEnd").value        = r.endDate;
-  document.getElementById("editNotes").value      = r.notes||"";
-  document.getElementById("editLeaveType").value  = r.leaveType||"Annual";
+  document.getElementById("editRequestId").value    = id;
+  document.getElementById("editStart").value        = r.startDate;
+  document.getElementById("editEnd").value          = r.endDate;
+  document.getElementById("editNotes").value        = r.notes||"";
+  document.getElementById("editLeaveType").value    = r.leaveType||"Annual";
   document.getElementById("editCustomReason").value = r.customReason||"";
   document.getElementById("editCustomGroup").style.display = r.leaveType==="Custom"?"block":"none";
   document.getElementById("editError").textContent = "";
@@ -619,9 +594,12 @@ document.getElementById("editModalClose").addEventListener("click",  () => docum
 document.getElementById("editModalCancel").addEventListener("click", () => document.getElementById("editModal").style.display="none");
 document.getElementById("editForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const id=document.getElementById("editRequestId").value, s=document.getElementById("editStart").value,
-        e2=document.getElementById("editEnd").value, notes=document.getElementById("editNotes").value.trim(),
-        leaveType=document.getElementById("editLeaveType").value, customReason=document.getElementById("editCustomReason").value.trim(),
+  const id=document.getElementById("editRequestId").value,
+        s=document.getElementById("editStart").value,
+        e2=document.getElementById("editEnd").value,
+        notes=document.getElementById("editNotes").value.trim(),
+        leaveType=document.getElementById("editLeaveType").value,
+        customReason=document.getElementById("editCustomReason").value.trim(),
         errEl=document.getElementById("editError");
   errEl.textContent="";
   if (leaveType==="Custom"&&!customReason){errEl.textContent="Enter a reason.";return;}
@@ -654,8 +632,7 @@ window.requestEdit = async (id) => {
     });
     notifyManagers(
       `Edit Request — ${EMP.name}`,
-      `${EMP.name} has requested to edit their approved leave request.
-Please review and allow or deny the edit in the Approvals tab.`
+      `${EMP.name} has requested to edit their approved leave request.\nPlease review and allow or deny the edit in the Approvals tab.`
     );
     toast("Edit request sent to manager.");
   } catch { toast("Failed to send request.", "error"); }
@@ -672,8 +649,10 @@ document.getElementById("changePwClose").addEventListener("click",  () => docume
 document.getElementById("changePwCancel").addEventListener("click", () => document.getElementById("changePwModal").style.display="none");
 document.getElementById("changePwForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const currentPw=document.getElementById("currentPw").value, newPw=document.getElementById("newPw").value,
-        confirmPw=document.getElementById("confirmPw").value, errEl=document.getElementById("changePwError"),
+  const currentPw=document.getElementById("currentPw").value,
+        newPw=document.getElementById("newPw").value,
+        confirmPw=document.getElementById("confirmPw").value,
+        errEl=document.getElementById("changePwError"),
         succEl=document.getElementById("changePwSuccess");
   errEl.textContent=""; succEl.textContent="";
   if (newPw.length<6){errEl.textContent="New password must be at least 6 characters.";return;}
@@ -740,14 +719,10 @@ async function loadTeam() {
     if (!members.length){el.innerHTML=`<div class="list-empty">No other members in your group.</div>`;return;}
     const today2=todayStr();
     el.innerHTML=members.map(m=>{
-      // Get this member's requests
       const memberReqs = allRequests
         .filter(r => r.employeeId===m.id && r.endDate>=today2 && (r.status==="Approved"||r.status==="Pending"))
         .sort((a,b)=>a.startDate.localeCompare(b.startDate));
-
       const onLeave = memberReqs.some(r=>r.status==="Approved"&&r.startDate<=today2&&r.endDate>=today2);
-
-      // Build leave summary
       const leaveSummary = memberReqs.map(r => {
         const icon = r.status==="Approved" ? "✅" : "⏳";
         const label = r.status==="Approved" ? "Approved" : "Pending";
