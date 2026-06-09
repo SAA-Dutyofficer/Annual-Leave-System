@@ -78,9 +78,6 @@ function switchTab(name) {
     renderStaffTable();
   }
   if (name === "schedule") renderSchedule();
-  if (name === "schedule") renderSchedule();
-  if (name === "schedule") renderSchedule();
-  if (name === "schedule") renderSchedule();
 }
 document.querySelectorAll(".nav-tab,.mob-tab").forEach(t =>
   t.addEventListener("click", () => switchTab(t.dataset.tab)));
@@ -93,12 +90,6 @@ document.getElementById("approvalFilter").addEventListener("change", renderAppro
 document.getElementById("auditFilter").addEventListener("change",    () => renderAuditLog(auditItems));
 document.getElementById("scheduleGroupFilter").addEventListener("change", renderSchedule);
 document.getElementById("scheduleMonthFilter").addEventListener("change", renderSchedule);
-document.getElementById("scheduleGroupFilter").addEventListener("change", renderSchedule);
-document.getElementById("scheduleMonthFilter").addEventListener("change", renderSchedule);
-document.getElementById("scheduleGroupFilter")?.addEventListener("change", renderSchedule);
-document.getElementById("scheduleMonthFilter")?.addEventListener("change", renderSchedule);
-document.getElementById("scheduleGroupFilter")?.addEventListener("change", renderSchedule);
-document.getElementById("scheduleMonthFilter")?.addEventListener("change", renderSchedule);
 
 // ── Live listeners ───────────────────────────────────────────────
 function listenEmployees() {
@@ -155,65 +146,6 @@ function updateStats() {
 }
 
 // ── Schedule ─────────────────────────────────────────────────────
-function renderSchedule() {
-  const tbody = document.getElementById("scheduleBody");
-  if (!tbody) return;
-
-  const grpFilter   = document.getElementById("scheduleGroupFilter")?.value || "all";
-  const monthFilter = document.getElementById("scheduleMonthFilter")?.value || "all";
-  const today       = todayStr();
-
-  // Only show approved and upcoming/current
-  let list = requests.filter(r =>
-    r.status === "Approved" && r.endDate >= today
-  );
-
-  // Filter by group
-  if (grpFilter !== "all") {
-    const empIds = employees.filter(e => e.groupId === grpFilter).map(e => e.id);
-    list = list.filter(r => empIds.includes(r.employeeId));
-  }
-
-  // Filter by month
-  if (monthFilter !== "all") {
-    const m = parseInt(monthFilter);
-    list = list.filter(r => {
-      const startMonth = new Date(r.startDate + "T00:00:00").getMonth();
-      const endMonth   = new Date(r.endDate   + "T00:00:00").getMonth();
-      return startMonth === m || endMonth === m ||
-        (startMonth < m && endMonth > m);
-    });
-  }
-
-  // Sort by start date
-  list.sort((a,b) => a.startDate.localeCompare(b.startDate));
-
-  if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="tbl-empty">No upcoming approved leave.</td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = list.map(r => {
-    const emp    = employees.find(e => e.id === r.employeeId);
-    const grpName = emp ? (groups.find(g => g.id === emp.groupId)?.name || "--") : "--";
-    const isOnLeave = r.startDate <= today && r.endDate >= today;
-    return `<tr>
-      <td><strong>${r.employeeName||"--"}</strong></td>
-      <td>${deptBadge(r.employeeDept||"--")}</td>
-      <td>${grpName}</td>
-      <td>${r.leaveType}</td>
-      <td>${fmtDate(r.startDate)}</td>
-      <td>${fmtDate(r.endDate)}</td>
-      <td>${r.days} days</td>
-      <td>${isOnLeave
-        ? `<span class="status-badge sb-approved">● On Leave Now</span>`
-        : `<span class="status-badge" style="background:var(--blue-light);color:var(--blue)">Upcoming</span>`}
-      </td>
-    </tr>`;
-  }).join("");
-}
-
-// Also populate schedule group filter when groups load
 function populateScheduleGroupFilter() {
   const sel = document.getElementById("scheduleGroupFilter");
   if (!sel) return;
@@ -222,59 +154,6 @@ function populateScheduleGroupFilter() {
 }
 
 // ── Schedule ─────────────────────────────────────────────────────
-function renderSchedule() {
-  const tbody     = document.getElementById("scheduleBody");
-  const grpFilter = document.getElementById("scheduleGroupFilter")?.value || "all";
-  const mthFilter = document.getElementById("scheduleMonthFilter")?.value || "all";
-  const today     = todayStr();
-
-  // Get all approved/pending future requests
-  let list = requests.filter(r =>
-    (r.status === "Approved" || r.status === "Pending") && r.endDate >= today
-  );
-
-  // Filter by group
-  if (grpFilter !== "all") {
-    list = list.filter(r => {
-      const emp = employees.find(e => e.id === r.employeeId);
-      return emp?.groupId === grpFilter;
-    });
-  }
-
-  // Filter by month
-  if (mthFilter !== "all") {
-    list = list.filter(r => {
-      const month = new Date(r.startDate + "T00:00:00").getMonth();
-      return month === parseInt(mthFilter);
-    });
-  }
-
-  // Sort by start date
-  list.sort((a,b) => a.startDate.localeCompare(b.startDate));
-
-  if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="tbl-empty">No upcoming leave found.</td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = list.map(r => {
-    const emp     = employees.find(e => e.id === r.employeeId);
-    const grpName = emp ? (groups.find(g => g.id === emp.groupId)?.name || "--") : "--";
-    const isOnLeave = r.startDate <= today && r.endDate >= today;
-    return `<tr>
-      <td><strong>${r.employeeName}</strong>${isOnLeave ? `<br/><span style="font-size:10px;color:var(--green)">● On Leave Now</span>` : ""}</td>
-      <td>${grpName}</td>
-      <td>${deptBadge(r.employeeDept||"DO")}</td>
-      <td>${r.leaveType}${r.customReason?`<br/><span style="font-size:10px;color:var(--gray-400)">${r.customReason}</span>`:""}</td>
-      <td>${fmtDate(r.startDate)}</td>
-      <td>${fmtDate(r.endDate)}</td>
-      <td>${r.days} day(s)</td>
-      <td>${statusBadge(r.status)}</td>
-    </tr>`;
-  }).join("");
-}
-
-// Populate schedule group filter
 function populateScheduleGroupFilter() {
   const sel = document.getElementById("scheduleGroupFilter");
   if (!sel) return;
@@ -805,60 +684,6 @@ function populateGroupFilters() {
 }
 
 // ── Schedule ─────────────────────────────────────────────────────
-function renderSchedule() {
-  const tbody     = document.getElementById("scheduleBody");
-  const grpFilter = document.getElementById("scheduleGroupFilter")?.value || "all";
-  const monFilter = document.getElementById("scheduleMonthFilter")?.value || "all";
-  const today     = todayStr();
-
-  // Get all approved leave that hasn't ended yet
-  let list = requests.filter(r =>
-    (r.status === "Approved" || r.status === "Pending") && r.endDate >= today
-  );
-
-  // Filter by group
-  if (grpFilter !== "all") {
-    list = list.filter(r => {
-      const emp = employees.find(e => e.id === r.employeeId);
-      return emp?.groupId === grpFilter;
-    });
-  }
-
-  // Filter by month
-  if (monFilter !== "all") {
-    const mon = parseInt(monFilter);
-    list = list.filter(r => {
-      const startMon = new Date(r.startDate + "T00:00:00").getMonth();
-      const endMon   = new Date(r.endDate   + "T00:00:00").getMonth();
-      return startMon === mon || endMon === mon;
-    });
-  }
-
-  // Sort by start date
-  list.sort((a, b) => a.startDate.localeCompare(b.startDate));
-
-  if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="tbl-empty">No upcoming leave found.</td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = list.map(r => {
-    const emp     = employees.find(e => e.id === r.employeeId);
-    const grpName = emp ? (groups.find(g => g.id === emp.groupId)?.name || "--") : "--";
-    const isOnLeave = r.startDate <= today && r.endDate >= today;
-    return `<tr>
-      <td><strong>${r.employeeName}</strong>${isOnLeave ? `<br/><span style="font-size:10px;color:var(--green)">● Currently On Leave</span>` : ""}</td>
-      <td>${deptBadge(r.employeeDept || emp?.dept || "--")}</td>
-      <td>${grpName}</td>
-      <td>${r.leaveType}</td>
-      <td>${fmtDate(r.startDate)}</td>
-      <td>${fmtDate(r.endDate)}</td>
-      <td>${r.days} days</td>
-      <td>${statusBadge(r.status)}</td>
-    </tr>`;
-  }).join("");
-}
-
 function renderGroups() {
   const el = document.getElementById("groupsGrid");
   if (!groups.length) {
