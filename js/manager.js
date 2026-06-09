@@ -35,15 +35,31 @@ let editingEmpId = null;
 let auditItems = [];
 
 // ── Auth guard ───────────────────────────────────────────────────
-onAuthStateChanged(auth, async (user) => {
-  if (!user) { location.href = "../index.html"; return; }
-  const uSnap = await getDoc(doc(db, "users", user.uid));
-  if (!uSnap.exists() || uSnap.data().role !== "manager") {
-    location.href = "staff.html"; return;
+let authResolved = false;
+
+// Fallback: if auth doesn't resolve in 6 seconds, reload
+setTimeout(() => {
+  if (!authResolved) {
+    console.log("Auth timeout — reloading");
+    location.reload();
   }
-  MGR = { uid: user.uid, ...uSnap.data() };
-  document.getElementById("navName").textContent = MGR.name || user.email;
-  init();
+}, 6000);
+
+onAuthStateChanged(auth, async (user) => {
+  authResolved = true;
+  if (!user) { location.href = "../index.html"; return; }
+  try {
+    const uSnap = await getDoc(doc(db, "users", user.uid));
+    if (!uSnap.exists() || uSnap.data().role !== "manager") {
+      location.href = "staff.html"; return;
+    }
+    MGR = { uid: user.uid, ...uSnap.data() };
+    document.getElementById("navName").textContent = MGR.name || user.email;
+    init();
+  } catch(err) {
+    console.error("Auth error:", err);
+    location.reload();
+  }
 });
 
 function init() {
