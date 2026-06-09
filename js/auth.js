@@ -6,38 +6,29 @@ import { signInWithEmailAndPassword, onAuthStateChanged,
 import { doc, getDoc }
   from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// On page load — if user is already logged in, redirect immediately
+// Only redirect if already logged in and on login page
 onAuthStateChanged(auth, async (user) => {
   if (!user) { clearCache(); return; }
   if (window.location.pathname.includes("/pages/")) return;
 
-  // Try cache first
-  const cachedRole = localStorage.getItem("als_role");
-  const cachedUid  = localStorage.getItem("als_uid");
-  if (cachedRole && cachedUid === user.uid) {
-    redirect(cachedRole);
-    return;
-  }
-
-  // No cache — fetch from Firestore
+  // Always fetch fresh role — don't rely on cache for redirect
   try {
     const role = await getRole(user.uid);
     setCache(user.uid, role);
     redirect(role);
   } catch {
-    // Firestore failed — default to staff
-    redirect("staff");
+    // If Firestore fails, go to login
+    clearCache();
   }
 });
 
-// Login form submit
+// Login
 document.getElementById("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const errEl = document.getElementById("loginError");
   const btn   = document.getElementById("loginBtn");
   const txtEl = btn.querySelector(".btn-text");
   const ldrEl = btn.querySelector(".btn-loader");
-
   errEl.textContent = "";
   txtEl.textContent = "Signing in…";
   ldrEl.style.display = "inline";
@@ -46,9 +37,8 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
   try {
     const email = document.getElementById("loginEmail").value.trim();
     const pass  = document.getElementById("loginPassword").value;
-
-    const cred = await signInWithEmailAndPassword(auth, email, pass);
-    const role = await getRole(cred.user.uid);
+    const cred  = await signInWithEmailAndPassword(auth, email, pass);
+    const role  = await getRole(cred.user.uid);
     setCache(cred.user.uid, role);
     redirect(role);
   } catch(err) {
@@ -65,7 +55,7 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
   }
 });
 
-// Toggle password visibility
+// Toggle password
 document.getElementById("togglePw").addEventListener("click", () => {
   const inp = document.getElementById("loginPassword");
   inp.type = inp.type === "password" ? "text" : "password";
@@ -104,7 +94,6 @@ document.getElementById("resetForm").addEventListener("submit", async (e) => {
   }
 });
 
-// Helpers
 async function getRole(uid) {
   const snap = await getDoc(doc(db, "users", uid));
   return snap.exists() ? (snap.data().role || "staff") : "staff";
@@ -115,11 +104,9 @@ function redirect(role) {
 }
 
 function setCache(uid, role) {
-  localStorage.setItem("als_uid",  uid);
-  localStorage.setItem("als_role", role);
+  try { localStorage.setItem("als_uid", uid); localStorage.setItem("als_role", role); } catch {}
 }
 
 function clearCache() {
-  localStorage.removeItem("als_uid");
-  localStorage.removeItem("als_role");
+  try { localStorage.clear(); } catch {}
 }
