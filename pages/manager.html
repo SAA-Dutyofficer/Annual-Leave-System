@@ -23,8 +23,6 @@
         <button class="nav-tab" data-tab="groups">Groups</button>
         <button class="nav-tab" data-tab="audit">Audit Log</button>
         <button class="nav-tab" data-tab="schedule">Schedule</button>
-        <button class="nav-tab" data-tab="schedule">Schedule</button>
-        <button class="nav-tab" data-tab="schedule">Schedule</button>
         <button class="nav-tab" data-tab="myleave">My Leave</button>
       </div>
     </div>
@@ -42,9 +40,6 @@
     <button class="mob-tab" data-tab="employees">👤</button>
     <button class="mob-tab" data-tab="groups">👥</button>
     <button class="mob-tab" data-tab="audit">📋</button>
-    <button class="mob-tab" data-tab="schedule">📅</button>
-    <button class="mob-tab" data-tab="schedule">📅</button>
-    <button class="mob-tab" data-tab="schedule">📅</button>
     <button class="mob-tab" data-tab="schedule">📅</button>
     <button class="mob-tab" data-tab="myleave">🏖️</button>
   </div>
@@ -203,156 +198,6 @@
       <div class="card">
         <div class="card-body no-pad">
           <div id="auditList" class="audit-list"><div class="list-empty">Loading...</div></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- SCHEDULE TAB -->
-    <div class="tab-panel" id="tab-schedule">
-      <div class="tab-header">
-        <div class="section-title">Upcoming Leave Schedule</div>
-        <div class="tab-actions">
-          <select id="scheduleGroupFilter" class="filter-select">
-            <option value="all">All Groups</option>
-          </select>
-          <select id="scheduleMonthFilter" class="filter-select">
-            <option value="all">All Months</option>
-            <option value="0">January</option>
-            <option value="1">February</option>
-            <option value="2">March</option>
-            <option value="3">April</option>
-            <option value="4">May</option>
-            <option value="5">June</option>
-            <option value="6">July</option>
-            <option value="7">August</option>
-            <option value="8">September</option>
-            <option value="9">October</option>
-            <option value="10">November</option>
-            <option value="11">December</option>
-          </select>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-body no-pad">
-          <div class="excel-wrap">
-            <table class="excel-table" id="scheduleTable">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Dept</th>
-                  <th>Group</th>
-                  <th>Leave Type</th>
-                  <th>Start Date</th>
-                  <th>End Date</th>
-                  <th>Days</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody id="scheduleBody">
-                <tr><td colspan="8" class="tbl-empty">Loading...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- SCHEDULE TAB -->
-    <div class="tab-panel" id="tab-schedule">
-      <div class="tab-header">
-        <div class="section-title">Upcoming Leave Schedule</div>
-        <div class="tab-actions">
-          <select id="scheduleGroupFilter" class="filter-select">
-            <option value="all">All Groups</option>
-          </select>
-          <select id="scheduleMonthFilter" class="filter-select">
-            <option value="all">All Months</option>
-            <option value="0">January</option>
-            <option value="1">February</option>
-            <option value="2">March</option>
-            <option value="3">April</option>
-            <option value="4">May</option>
-            <option value="5">June</option>
-            <option value="6">July</option>
-            <option value="7">August</option>
-            <option value="8">September</option>
-            <option value="9">October</option>
-            <option value="10">November</option>
-            <option value="11">December</option>
-          </select>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-body no-pad">
-          <div class="excel-wrap">
-            <table class="excel-table" id="scheduleTable">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Dept</th>
-                  <th>Group</th>
-                  <th>Leave Type</th>
-                  <th>Start Date</th>
-                  <th>End Date</th>
-                  <th>Days</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody id="scheduleBody">
-                <tr><td colspan="8" class="tbl-empty">Loading...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- SCHEDULE TAB -->
-    <div class="tab-panel" id="tab-schedule">
-      <div class="tab-header">
-        <div class="section-title">Upcoming Leave Schedule</div>
-        <div class="tab-actions">
-          <select id="scheduleGroupFilter" class="filter-select">
-            <option value="all">All Groups</option>
-          </select>
-          <select id="scheduleMonthFilter" class="filter-select">
-            <option value="all">All Months</option>
-            <option value="0">January</option>
-            <option value="1">February</option>
-            <option value="2">March</option>
-            <option value="3">April</option>
-            <option value="4">May</option>
-            <option value="5">June</option>
-            <option value="6">July</option>
-            <option value="7">August</option>
-            <option value="8">September</option>
-            <option value="9">October</option>
-            <option value="10">November</option>
-            <option value="11">December</option>
-          </select>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-body no-pad">
-          <div class="excel-wrap">
-            <table class="excel-table" id="scheduleTable">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Group</th>
-                  <th>Dept</th>
-                  <th>Leave Type</th>
-                  <th>Start Date</th>
-                  <th>End Date</th>
-                  <th>Days</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody id="scheduleBody">
-                <tr><td colspan="8" class="tbl-empty">Loading...</td></tr>
-              </tbody>
-            </table>
-          </div>
         </div>
       </div>
     </div>
