@@ -56,13 +56,12 @@ function init() {
   listenRequests();
   listenGroups();
   listenAudit();
-  // Small delay to ensure MGR is set before loading employee record
   setTimeout(initMyLeave, 500);
 }
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {
   try {
-    localStorage.clear(); // Clear all cached data
+    localStorage.clear();
     await signOut(auth);
   } catch(e) { console.error(e); }
   location.href = "../index.html";
@@ -74,9 +73,7 @@ function switchTab(name) {
     t.classList.toggle("active", t.dataset.tab === name));
   document.querySelectorAll(".tab-panel").forEach(p =>
     p.classList.toggle("active", p.id === "tab-" + name));
-  // Re-init My Leave if not loaded yet
   if (name === "myleave" && !MGR_EMP) initMyLeave();
-  // Reset filters when returning to dashboard
   if (name === "dashboard") {
     document.getElementById("staffSearch").value = "";
     document.getElementById("deptFilter").value  = "all";
@@ -123,9 +120,7 @@ function listenGroups() {
   onSnapshot(collection(db, "groups"), snap => {
     groups = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderGroups();
-    populateGroupFilters();
-    populateScheduleGroupFilter();
-    // Re-render tables now that groups are loaded
+    populateGroupFilters(); // this also populates scheduleGroupFilter
     if (employees.length > 0) {
       renderStaffTable();
       renderEmpTable();
@@ -151,15 +146,7 @@ function updateStats() {
   document.getElementById("statRenewals").textContent = employees.filter(isRenewalDue).length;
 }
 
-// ── Schedule ─────────────────────────────────────────────────────
-function populateScheduleGroupFilter() {
-  const sel = document.getElementById("scheduleGroupFilter");
-  if (!sel) return;
-  sel.innerHTML = `<option value="all">All Groups</option>` +
-    groups.map(g => `<option value="${g.id}">${g.name}</option>`).join("");
-}
-
-// ── Schedule ─────────────────────────────────────────────────────
+// ── Staff Table ──────────────────────────────────────────────────
 function renderStaffTable() {
   const dept   = document.getElementById("deptFilter").value;
   const grp    = document.getElementById("groupFilter").value;
@@ -258,7 +245,6 @@ function renderApprovals() {
   let list = [...requests];
   if (filter !== "all") list = list.filter(r => r.status === filter);
   list.sort((a,b) => {
-    // Edit requests first, then pending, then rest
     if (a.editRequested && !b.editRequested) return -1;
     if (b.editRequested && !a.editRequested) return 1;
     if (a.status==="Pending" && b.status!=="Pending") return -1;
@@ -475,7 +461,6 @@ document.getElementById("empForm").addEventListener("submit", async (e) => {
     errEl.textContent = "Password must be at least 6 characters."; return;
   }
 
-  // Cycle start = joining date, cycle end = 1 year later
   const cycleStart   = joinDate;
   const cycleEndDate = cycleEnd(joinDate);
 
@@ -485,7 +470,6 @@ document.getElementById("empForm").addEventListener("submit", async (e) => {
 
   try {
     if (!editingEmpId) {
-      // Use secondary app to create user — manager stays logged in
       const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
       const uid  = cred.user.uid;
       await secondaryAuth.signOut();
@@ -510,7 +494,6 @@ document.getElementById("empForm").addEventListener("submit", async (e) => {
       toast(`${name} added successfully!`);
 
     } else {
-      // Edit existing
       const empData = {
         name, dept, pattern, joinDate,
         cycleStart, cycleEnd: cycleEndDate,
@@ -621,10 +604,11 @@ document.getElementById("renewForm").addEventListener("submit", async (e) => {
 
 // ── Groups ───────────────────────────────────────────────────────
 function populateGroupFilters() {
+  // Dashboard filter
   const sel = document.getElementById("groupFilter");
   sel.innerHTML = `<option value="all">All Groups</option>` +
     groups.map(g => `<option value="${g.id}">${g.name}</option>`).join("");
-  // Also populate schedule group filter
+  // Schedule filter
   const ssel = document.getElementById("scheduleGroupFilter");
   if (ssel) {
     ssel.innerHTML = `<option value="all">All Groups</option>` +
@@ -632,7 +616,6 @@ function populateGroupFilters() {
   }
 }
 
-// ── Schedule ─────────────────────────────────────────────────────
 function renderGroups() {
   const el = document.getElementById("groupsGrid");
   if (!groups.length) {
@@ -707,16 +690,14 @@ function renderAuditLog(items) {
 
 // ── Schedule ─────────────────────────────────────────────────────
 function renderSchedule() {
-  const tbody    = document.getElementById("scheduleBody");
+  const tbody  = document.getElementById("scheduleBody");
   if (!tbody) return;
-  const groupF   = document.getElementById("scheduleGroupFilter")?.value || "all";
-  const monthF   = document.getElementById("scheduleMonthFilter")?.value || "all";
-  const today    = todayStr();
+  const groupF = document.getElementById("scheduleGroupFilter")?.value || "all";
+  const monthF = document.getElementById("scheduleMonthFilter")?.value || "all";
+  const today  = todayStr();
 
-  // Get all approved leave that hasn't ended yet
   let list = requests.filter(r => r.status === "Approved" && r.endDate >= today);
 
-  // Filter by group
   if (groupF !== "all") {
     list = list.filter(r => {
       const emp = employees.find(e => e.id === r.employeeId);
@@ -724,7 +705,6 @@ function renderSchedule() {
     });
   }
 
-  // Filter by month (start date month)
   if (monthF !== "all") {
     list = list.filter(r => {
       const m = new Date(r.startDate + "T00:00:00").getMonth();
@@ -732,7 +712,6 @@ function renderSchedule() {
     });
   }
 
-  // Sort by start date
   list.sort((a,b) => a.startDate.localeCompare(b.startDate));
 
   if (!list.length) {
@@ -770,13 +749,7 @@ window.allowEdit = async (reqId, empEmail, empName) => {
     if (empEmail) sendEmail(
       empEmail,
       "Edit Request Approved",
-      `Hi ${empName},
-
-Your request to edit your leave has been approved.
-Please log in and make your changes from My History.
-
-Regards,
-Annual Leave System`
+      `Hi ${empName},\n\nYour request to edit your leave has been approved.\nPlease log in and make your changes from My History.\n\nRegards,\nAnnual Leave System`
     );
     toast("Edit allowed — staff can now edit their request.");
   } catch(err) { toast("Failed.", "error"); console.error(err); }
@@ -790,13 +763,7 @@ window.denyEdit = async (reqId, empEmail, empName) => {
     if (empEmail) sendEmail(
       empEmail,
       "Edit Request Denied",
-      `Hi ${empName},
-
-Your request to edit your approved leave has been denied.
-Please contact your manager for further information.
-
-Regards,
-Annual Leave System`
+      `Hi ${empName},\n\nYour request to edit your approved leave has been denied.\nPlease contact your manager for further information.\n\nRegards,\nAnnual Leave System`
     );
     toast("Edit request denied.");
   } catch(err) { toast("Failed.", "error"); console.error(err); }
@@ -807,20 +774,15 @@ let MGR_EMP = null;
 let MGR_MY_REQUESTS = [];
 
 async function initMyLeave() {
-  console.log("initMyLeave called, MGR.uid =", MGR?.uid);
-  if (!MGR?.uid) { console.log("MGR not ready"); setTimeout(initMyLeave, 1000); return; }
-  // Load manager's own employee record
+  if (!MGR?.uid) { setTimeout(initMyLeave, 1000); return; }
   const eSnap = await getDoc(doc(db, "employees", MGR.uid));
-  console.log("Employee snap exists:", eSnap.exists(), "data:", eSnap.data());
   if (!eSnap.exists()) {
-    console.log("No employee record found for UID:", MGR.uid);
-    document.getElementById("mgr-historyList").innerHTML = '<div class="list-empty">No employee record found. Please add yourself as an employee first.</div>';
+    document.getElementById("mgr-historyList").innerHTML =
+      '<div class="list-empty">No employee record found. Please add yourself as an employee first.</div>';
     return;
   }
   MGR_EMP = { id: eSnap.id, ...eSnap.data() };
-  console.log("MGR_EMP loaded:", MGR_EMP);
 
-  // Show pattern fields if DO
   if (MGR_EMP.dept === "DO") {
     document.getElementById("mgr-doPatternFields").style.display = "block";
     if (MGR_EMP.pattern)     document.getElementById("mgr-fPattern").value     = MGR_EMP.pattern;
@@ -829,14 +791,12 @@ async function initMyLeave() {
 
   renderMgrBalance();
 
-  // Listen to own requests
   const q = query(collection(db,"leaveRequests"), where("employeeId","==",MGR.uid), orderBy("submittedAt","desc"));
   onSnapshot(q, snap => {
     MGR_MY_REQUESTS = snap.docs.map(d => ({ id:d.id, ...d.data() }));
     renderMgrHistory();
   });
 
-  // Date change listeners
   document.getElementById("mgr-fStartDate").addEventListener("change", mgrValidateDates);
   document.getElementById("mgr-fEndDate").addEventListener("change",   mgrValidateDates);
   document.getElementById("mgr-fLeaveType").addEventListener("change", () => {
