@@ -35,18 +35,7 @@ let editingEmpId = null;
 let auditItems = [];
 
 // ── Auth guard ───────────────────────────────────────────────────
-let authResolved = false;
-
-// Fallback: if auth doesn't resolve in 6 seconds, reload
-setTimeout(() => {
-  if (!authResolved) {
-    console.log("Auth timeout — reloading");
-    location.reload();
-  }
-}, 6000);
-
 onAuthStateChanged(auth, async (user) => {
-  authResolved = true;
   if (!user) { location.href = "../index.html"; return; }
   try {
     const uSnap = await getDoc(doc(db, "users", user.uid));
