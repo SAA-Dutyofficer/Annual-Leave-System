@@ -56,9 +56,10 @@ function init() {
 }
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {
-  localStorage.removeItem("als_uid");
-  localStorage.removeItem("als_role");
-  await signOut(auth);
+  try {
+    localStorage.clear(); // Clear all cached data
+    await signOut(auth);
+  } catch(e) { console.error(e); }
   location.href = "../index.html";
 });
 
@@ -154,63 +155,6 @@ function populateScheduleGroupFilter() {
 }
 
 // ── Schedule ─────────────────────────────────────────────────────
-function populateScheduleGroupFilter() {
-  const sel = document.getElementById("scheduleGroupFilter");
-  if (!sel) return;
-  sel.innerHTML = `<option value="all">All Groups</option>` +
-    groups.map(g => `<option value="${g.id}">${g.name}</option>`).join("");
-}
-
-// ── Dashboard filter ─────────────────────────────────────────────
-window.filterDashboard = (type) => {
-  const today = todayStr();
-  const tbody = document.getElementById("staffTableBody");
-  let emps = [...employees];
-
-  if (type === "onleave") {
-    const onLeaveIds = new Set(requests.filter(r =>
-      r.status === "Approved" && r.startDate <= today && r.endDate >= today).map(r => r.employeeId));
-    emps = emps.filter(e => onLeaveIds.has(e.id));
-  } else if (type === "renewal") {
-    emps = emps.filter(e => isRenewalDue(e));
-  }
-
-  emps.sort((a,b) => (a.name||"").localeCompare(b.name||""));
-  const onLeaveSet = new Set(requests.filter(r =>
-    r.status === "Approved" && r.startDate <= today && r.endDate >= today).map(r => r.employeeId));
-
-  if (!emps.length) {
-    tbody.innerHTML = `<tr><td colspan="10" class="tbl-empty">No employees found.</td></tr>`; return;
-  }
-  tbody.innerHTML = emps.map(emp => {
-    const used = emp.leaveUsed||0, ent = emp.entitlement||0, rem = Math.max(0,ent-used);
-    const unpaid = emp.unpaidUsed||0;
-    const grpName = groups.find(g => g.id === emp.groupId)?.name || "--";
-    const cs = emp.cycleStart, ce = emp.cycleEnd || cycleEnd(cs || today);
-    const onLeave = onLeaveSet.has(emp.id);
-    const renewal = isRenewalDue(emp);
-    return `<tr class="row-expand" onclick="expandEmployee('${emp.id}')">
-      <td class="col-sticky">
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="group-avatar" style="width:30px;height:30px;font-size:11px">${initials(emp.name)}</div>
-          <div>
-            <div style="font-weight:600">${emp.name||"--"}</div>
-            ${onLeave?`<span style="font-size:10px;color:var(--green)">● On Leave</span>`:""}
-            ${renewal?`<span style="font-size:10px;color:var(--orange)">⚠ Renewal Due</span>`:""}
-          </div>
-        </div>
-      </td>
-      <td>${deptBadge(emp.dept)}</td>
-      <td>${grpName}</td>
-      <td>${emp.dept==="DO"?(emp.pattern||"--"):"Mon–Thu"}</td>
-      <td>${ent} days</td><td>${used} days</td><td>${rem} days</td><td>${unpaid} days</td>
-      <td style="font-size:11px;color:var(--gray-500)">${fmtDate(cs)} – ${fmtDate(ce)}</td>
-      <td>${onLeave?statusBadge("Approved"):`<span style="color:var(--gray-300);font-size:11px">Available</span>`}</td>
-    </tr>`;
-  }).join("");
-};
-
-// ── Staff table ──────────────────────────────────────────────────
 function renderStaffTable() {
   const dept   = document.getElementById("deptFilter").value;
   const grp    = document.getElementById("groupFilter").value;
