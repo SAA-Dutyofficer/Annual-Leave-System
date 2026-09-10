@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Recalculate Leave Balances | Annual Leave System</title>
+  <style>
+    :root{
+      --navy:#1B2A4A; --blue:#3B82F6; --blue-light:#EFF6FF;
+      --green:#10B981; --green-light:#D1FAE5;
+      --orange:#F59E0B; --orange-light:#FEF3C7;
+      --red:#EF4444; --red-light:#FEE2E2;
+      --gray-50:#F9FAFB; --gray-200:#E5E7EB; --gray-400:#9CA3AF;
+      --gray-600:#4B5563; --gray-700:#374151; --gray-800:#1F2937;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Inter',system-ui,sans-serif;background:var(--gray-50);color:var(--gray-800);
+      font-size:14px;line-height:1.5;padding:24px;}
+    .wrap{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:16px;}
+    h1{color:var(--navy);font-size:20px;}
+    p.sub{color:var(--gray-600);font-size:13px;}
+    .card{background:#fff;border:1px solid var(--gray-200);border-radius:10px;padding:18px;
+      box-shadow:0 1px 3px rgba(0,0,0,.08);}
+    .warn{background:var(--orange-light);color:#92400E;padding:12px 14px;border-radius:8px;font-size:13px;}
+    .status{font-size:13px;color:var(--gray-600);}
+    button{padding:10px 18px;border:none;border-radius:8px;font-size:14px;font-weight:600;
+      cursor:pointer;font-family:inherit;}
+    .btn-primary{background:var(--blue);color:#fff;}
+    .btn-primary:disabled{background:var(--gray-400);cursor:not-allowed;}
+    .btn-danger{background:var(--red);color:#fff;}
+    .btn-danger:disabled{background:var(--gray-400);cursor:not-allowed;}
+    table{width:100%;border-collapse:collapse;font-size:12.5px;}
+    th{background:var(--gray-50);text-align:left;padding:8px 10px;border-bottom:2px solid var(--gray-200);
+      font-size:11px;text-transform:uppercase;color:var(--gray-600);}
+    td{padding:8px 10px;border-bottom:1px solid var(--gray-200);vertical-align:top;}
+    .diff-row{background:var(--orange-light);}
+    .ok-row{color:var(--gray-400);}
+    .field-diff{display:inline-block;margin:1px 4px 1px 0;padding:2px 6px;border-radius:4px;font-size:11px;}
+    .field-diff.changed{background:var(--red-light);color:var(--red);font-weight:600;}
+    .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+    #log{font-size:12px;color:var(--gray-600);white-space:pre-wrap;max-height:160px;overflow-y:auto;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🔧 Leave Balance Recalculation Tool</h1>
+    <p class="sub">One-time correction: recomputes every employee's used-days counters from their actual approved leave requests and shows you exactly what would change before writing anything.</p>
+
+    <div class="card warn">
+      <strong>Manager login required.</strong> This tool writes directly to the <code>employees</code> collection.
+      Nothing is changed until you review the preview below and click "Apply Corrections."
+      An audit log entry is created summarizing every change made.
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <button class="btn-primary" id="scanBtn">1. Scan &amp; Preview</button>
+        <button class="btn-danger" id="applyBtn" disabled>2. Apply Corrections</button>
+        <span class="status" id="statusText">Not scanned yet.</span>
+      </div>
+    </div>
+
+    <div class="card" id="resultsCard" style="display:none">
+      <table>
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Cycle</th>
+            <th>Stored values</th>
+            <th>Correct values (from approved requests)</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div id="log">Ready.</div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signInWithEmailAndPassword }
+      from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, collection, getDocs, writeBatch, addDoc, serverTimestamp }
+      from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDRFzz7OPlRyjJekZh6rbMNz6teQJ6yd_M",
+      authDomain: "annual-leave-system-83d7a.web.app",
+      projectId: "annual-leave-system-83d7a",
+      storageBucket: "annual-leave-system-83d7a.firebasestorage.app",
+      messagingSenderId: "1047300958404",
+      appId: "1:1047300958404:web:61dc1bb5ab1d985f764191"
+    };
+    const app  = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db   = getFirestore(app);
+
+    const logEl     = document.getElementById("log");
+    const statusEl  = document.getElementById("statusText");
+    const scanBtn   = document.getElementById("scanBtn");
+    const applyBtn  = document.getElementById("applyBtn");
+    const resultsCard = document.getElementById("resultsCard");
+    const resultsBody = document.getElementById("resultsBody");
+
+    function log(msg) {
+      logEl.textContent += "\n" + msg;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    const FIELD_MAP = {
+      Annual:    "leaveUsed",
+      Unpaid:    "unpaidUsed",
+      Paternity: "paternityUsed",
+      Hajj:      "hajjUsed",
+      Emergency: "emergencyUsed",
+      Custom:    "customUsed"
+    };
+    const ALL_FIELDS = Object.values(FIELD_MAP);
+
+    // Require manager login before this tool does anything
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        statusEl.textContent = "Please sign in as a manager first (open the main app in another tab, sign in, then reload this page).";
+        scanBtn.disabled = true;
+        return;
+      }
+      const uSnap = await getDoc(doc(db, "users", user.uid));
+      if (!uSnap.exists() || uSnap.data().role !== "manager") {
+        statusEl.textContent = "This account is not a manager. Access denied.";
+        scanBtn.disabled = true;
+        return;
+      }
+      statusEl.textContent = `Signed in as ${uSnap.data().name || user.email} (manager). Ready to scan.`;
+    });
+
+    let pendingCorrections = []; // { empId, empName, fixes: {field: newValue}, before: {...} }
+
+    scanBtn.addEventListener("click", async () => {
+      scanBtn.disabled = true;
+      applyBtn.disabled = true;
+      resultsCard.style.display = "none";
+      resultsBody.innerHTML = "";
+      pendingCorrections = [];
+      log("Fetching employees and leave requests...");
+
+      const [empSnap, reqSnap] = await Promise.all([
+        getDocs(collection(db, "employees")),
+        getDocs(collection(db, "leaveRequests"))
+      ]);
+      const employees = empSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const requests  = reqSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      log(`Loaded ${employees.length} employees and ${requests.length} leave requests.`);
+
+      for (const emp of employees) {
+        // Approved requests belonging to this employee, in their CURRENT cycle.
+        // Prefer matching by cycleId (most reliable); fall back to date-range
+        // against cycleStart/cycleEnd if a request has no cycleId recorded.
+        const empReqs = requests.filter(r => {
+          if (r.employeeId !== emp.id) return false;
+          if (r.status !== "Approved") return false;
+          if (emp.cycleId && r.cycleId) return r.cycleId === emp.cycleId;
+          if (emp.cycleStart && emp.cycleEnd) {
+            return r.startDate >= emp.cycleStart && r.startDate <= emp.cycleEnd;
+          }
+          return true; // no cycle info at all — count everything approved
+        });
+
+        const correct = { leaveUsed:0, unpaidUsed:0, paternityUsed:0, hajjUsed:0, emergencyUsed:0, customUsed:0 };
+        for (const r of empReqs) {
+          const field = FIELD_MAP[r.leaveType] || "customUsed";
+          correct[field] += (r.days || 0);
+        }
+
+        const before = {};
+        const fixes  = {};
+        let changed = false;
+        for (const f of ALL_FIELDS) {
+          const storedVal = emp[f] || 0;
+          before[f] = storedVal;
+          if (storedVal !== correct[f]) {
+            fixes[f] = correct[f];
+            changed = true;
+          }
+        }
+
+        const cs = emp.cycleStart || "--", ce = emp.cycleEnd || "--";
+        const row = document.createElement("tr");
+        row.className = changed ? "diff-row" : "ok-row";
+        row.innerHTML = `
+          <td><strong>${emp.name || emp.id}</strong></td>
+          <td>${cs} → ${ce}</td>
+          <td>${ALL_FIELDS.map(f => `<span class="field-diff">${f}: ${before[f]}</span>`).join("")}</td>
+          <td>${ALL_FIELDS.map(f => `<span class="field-diff ${fixes[f]!==undefined?'changed':''}">${f}: ${correct[f]}</span>`).join("")}</td>
+        `;
+        resultsBody.appendChild(row);
+
+        if (changed) {
+          pendingCorrections.push({ empId: emp.id, empName: emp.name || emp.id, fixes, before });
+        }
+      }
+
+      resultsCard.style.display = "block";
+      log(`Scan complete. ${pendingCorrections.length} employee(s) need correction.`);
+      statusEl.textContent = `${pendingCorrections.length} employee(s) have incorrect stored totals.`;
+      scanBtn.disabled = false;
+      applyBtn.disabled = pendingCorrections.length === 0;
+    });
+
+    applyBtn.addEventListener("click", async () => {
+      if (!pendingCorrections.length) return;
+      if (!confirm(`Apply corrections to ${pendingCorrections.length} employee record(s)? This cannot be undone automatically.`)) return;
+
+      applyBtn.disabled = true;
+      log(`Applying corrections to ${pendingCorrections.length} employee(s)...`);
+
+      try {
+        const batch = writeBatch(db);
+        const summaryLines = [];
+        for (const c of pendingCorrections) {
+          batch.update(doc(db, "employees", c.empId), c.fixes);
+          const diffText = Object.entries(c.fixes)
+            .map(([f, v]) => `${f}: ${c.before[f]} → ${v}`).join(", ");
+          summaryLines.push(`${c.empName}: ${diffText}`);
+        }
+        await batch.commit();
+
+        await addDoc(collection(db, "auditLog"), {
+          action: "balances_recalculated",
+          label: `One-time leave balance correction (${pendingCorrections.length} employees)`,
+          detail: summaryLines.join("\n"),
+          by: auth.currentUser.email,
+          at: serverTimestamp()
+        });
+
+        log("✅ Corrections applied successfully. Audit log entry created.");
+        statusEl.textContent = "Corrections applied. Reload the main app to see updated balances.";
+      } catch (err) {
+        log("❌ Failed: " + err.message);
+        console.error(err);
+        applyBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
