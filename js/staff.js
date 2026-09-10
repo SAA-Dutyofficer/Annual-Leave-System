@@ -4,7 +4,7 @@ import { onAuthStateChanged, signOut,
          EmailAuthProvider, reauthenticateWithCredential, updatePassword }
   from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { doc, getDoc, collection, query, where, onSnapshot,
-         addDoc, updateDoc, serverTimestamp, getDocs, orderBy }
+         addDoc, updateDoc, serverTimestamp, getDocs, orderBy, writeBatch }
   from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { fmtDate, todayStr, cycleEnd,
          isGDWorkDay, isDOWorkDay, countWorkDays,
@@ -592,6 +592,11 @@ window.openEditModal = (id) => {
 };
 document.getElementById("editModalClose").addEventListener("click",  () => document.getElementById("editModal").style.display="none");
 document.getElementById("editModalCancel").addEventListener("click", () => document.getElementById("editModal").style.display="none");
+
+// ── PATCHED: Edit form now reverses the ORIGINAL request's day-count from
+// the employee's stored counter (in the same batch) before the request goes
+// back to Pending. Without this, re-approving the edited request would add
+// the new day-count on top of the old one that was never removed. ──
 document.getElementById("editForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const id=document.getElementById("editRequestId").value,
@@ -608,7 +613,20 @@ document.getElementById("editForm").addEventListener("submit", async (e) => {
   const days=countWorkDays(s,e2,EMP.dept,orig?.requestPattern||EMP.pattern,orig?.requestRosterStart||EMP.rosterStart);
   if (days===0){errEl.textContent="No working days in range.";return;}
   try {
-    await updateDoc(doc(db,"leaveRequests",id),{startDate:s,endDate:e2,days,notes,leaveType,customReason:customReason||null,status:"Pending",editedAt:serverTimestamp()});
+    const batch = writeBatch(db);
+    batch.update(doc(db,"leaveRequests",id), {
+      startDate:s, endDate:e2, days, notes, leaveType,
+      customReason: customReason||null, status:"Pending", editedAt: serverTimestamp()
+    });
+    if (orig && (orig.status === "Approved" || orig.status === "EditAllowed")) {
+      const field = balanceField(orig.leaveType);
+      const empSnap = await getDoc(doc(db, "employees", ME.uid));
+      const current = empSnap.exists() ? (empSnap.data()[field] || 0) : 0;
+      batch.update(doc(db, "employees", ME.uid), {
+        [field]: Math.max(0, current - (orig.days || 0))
+      });
+    }
+    await batch.commit();
     notifyManagers(`Leave Request Edited — ${EMP.name}`, `${EMP.name} edited their leave request.\nNew dates: ${fmtDate(s)} – ${fmtDate(e2)}\nDays: ${days}\nType: ${leaveType}`);
     toast("Request updated. Manager notified.");
     document.getElementById("editModal").style.display="none";
