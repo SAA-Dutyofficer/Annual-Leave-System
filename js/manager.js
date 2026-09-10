@@ -568,6 +568,10 @@ window.openRenewModal = (empId) => {
   });
 });
 
+// ── PATCHED: renewal now resets ALL used-day counters, not just
+// leaveUsed/unpaidUsed. Previously paternityUsed/hajjUsed/emergencyUsed/
+// customUsed carried over indefinitely across cycles, which drifted out
+// of sync with what "Special Leave Taken" actually showed. ──
 document.getElementById("renewForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const empId   = document.getElementById("renewEmpId").value;
@@ -584,12 +588,17 @@ document.getElementById("renewForm").addEventListener("submit", async (e) => {
       employeeId: empId, employeeName: emp.name, dept: emp.dept,
       cycleStart: emp.cycleStart, cycleEnd: emp.cycleEnd,
       entitlement: emp.entitlement, leaveUsed: emp.leaveUsed||0,
-      unpaidUsed: emp.unpaidUsed||0, archivedAt: serverTimestamp()
+      unpaidUsed: emp.unpaidUsed||0,
+      paternityUsed: emp.paternityUsed||0, hajjUsed: emp.hajjUsed||0,
+      emergencyUsed: emp.emergencyUsed||0, customUsed: emp.customUsed||0,
+      archivedAt: serverTimestamp()
     });
     const newEnd = cycleEnd(newStart);
     await updateDoc(doc(db,"employees",empId), {
       cycleStart: newStart, cycleEnd: newEnd,
-      entitlement: newEnt, leaveUsed: 0, unpaidUsed: 0,
+      entitlement: newEnt,
+      leaveUsed: 0, unpaidUsed: 0, paternityUsed: 0,
+      hajjUsed: 0, emergencyUsed: 0, customUsed: 0,
       cycleId: `${empId}_${newStart}`
     });
     await addDoc(collection(db,"auditLog"), {
