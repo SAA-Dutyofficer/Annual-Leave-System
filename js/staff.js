@@ -54,7 +54,6 @@ onAuthStateChanged(auth, async (user) => {
   renderDualCalendar();
   listenMyRequests();
   listenAllRequests();
-  listenForAutoRenewal();
   loadTeam();
   checkRenewal();
 });
