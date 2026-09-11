@@ -39,17 +39,22 @@
     .field-diff.changed{background:var(--red-light);color:var(--red);font-weight:600;}
     .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
     #log{font-size:12px;color:var(--gray-600);white-space:pre-wrap;max-height:160px;overflow-y:auto;}
+    .cyc{font-size:11px;color:var(--gray-500);}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>🔧 Leave Balance Recalculation Tool</h1>
-    <p class="sub">One-time correction: recomputes every employee's used-days counters from their actual approved leave requests and shows you exactly what would change before writing anything.</p>
+    <h1>🔧 Leave Balance Recalculation Tool (v2 — date-range matching)</h1>
+    <p class="sub">Recomputes every employee's used-days counters from their actual approved leave requests that fall inside their CURRENT cycle dates. Use this after the auto-renewal double-fire bug — it does not rely on cycleId, only on cycleStart/cycleEnd, so it works even for employees whose cycleId got regenerated multiple times.</p>
 
     <div class="card warn">
       <strong>Manager login required.</strong> This tool writes directly to the <code>employees</code> collection.
       Nothing is changed until you review the preview below and click "Apply Corrections."
       An audit log entry is created summarizing every change made.
+      <br><br>
+      <strong>Before running this:</strong> make sure you've already deployed the staff.js fix that removes
+      the <code>listenForAutoRenewal()</code> call — otherwise cycles could keep shifting underneath you
+      while you're trying to fix them.
     </div>
 
     <div class="card">
@@ -65,9 +70,9 @@
         <thead>
           <tr>
             <th>Employee</th>
-            <th>Cycle</th>
+            <th>Current Cycle (used for matching)</th>
             <th>Stored values</th>
-            <th>Correct values (from approved requests)</th>
+            <th>Correct values (from approved requests in current cycle)</th>
           </tr>
         </thead>
         <tbody id="resultsBody"></tbody>
@@ -81,7 +86,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getAuth, onAuthStateChanged, signInWithEmailAndPassword }
+    import { getAuth, onAuthStateChanged }
       from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
     import { getFirestore, doc, getDoc, collection, getDocs, writeBatch, addDoc, serverTimestamp }
       from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -155,17 +160,15 @@
       log(`Loaded ${employees.length} employees and ${requests.length} leave requests.`);
 
       for (const emp of employees) {
-        // Approved requests belonging to this employee, in their CURRENT cycle.
-        // Prefer matching by cycleId (most reliable); fall back to date-range
-        // against cycleStart/cycleEnd if a request has no cycleId recorded.
+        // Match by DATE RANGE against the employee's current cycleStart/cycleEnd,
+        // NOT by cycleId — cycleId is unreliable right now because some employees
+        // were auto-renewed multiple times in a row, regenerating cycleId each time
+        // even though the request itself was submitted correctly in between.
         const empReqs = requests.filter(r => {
           if (r.employeeId !== emp.id) return false;
           if (r.status !== "Approved") return false;
-          if (emp.cycleId && r.cycleId) return r.cycleId === emp.cycleId;
-          if (emp.cycleStart && emp.cycleEnd) {
-            return r.startDate >= emp.cycleStart && r.startDate <= emp.cycleEnd;
-          }
-          return true; // no cycle info at all — count everything approved
+          if (!emp.cycleStart || !emp.cycleEnd) return true; // no cycle info — count everything approved
+          return r.startDate >= emp.cycleStart && r.startDate <= emp.cycleEnd;
         });
 
         const correct = { leaveUsed:0, unpaidUsed:0, paternityUsed:0, hajjUsed:0, emergencyUsed:0, customUsed:0 };
@@ -191,7 +194,7 @@
         row.className = changed ? "diff-row" : "ok-row";
         row.innerHTML = `
           <td><strong>${emp.name || emp.id}</strong></td>
-          <td>${cs} → ${ce}</td>
+          <td class="cyc">${cs} → ${ce}</td>
           <td>${ALL_FIELDS.map(f => `<span class="field-diff">${f}: ${before[f]}</span>`).join("")}</td>
           <td>${ALL_FIELDS.map(f => `<span class="field-diff ${fixes[f]!==undefined?'changed':''}">${f}: ${correct[f]}</span>`).join("")}</td>
         `;
@@ -229,7 +232,7 @@
 
         await addDoc(collection(db, "auditLog"), {
           action: "balances_recalculated",
-          label: `One-time leave balance correction (${pendingCorrections.length} employees)`,
+          label: `One-time leave balance correction v2, date-range matched (${pendingCorrections.length} employees)`,
           detail: summaryLines.join("\n"),
           by: auth.currentUser.email,
           at: serverTimestamp()
