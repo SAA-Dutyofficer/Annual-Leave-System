@@ -9,7 +9,7 @@ import { getAuth as getSecondAuth } from "https://www.gstatic.com/firebasejs/10.
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
          onSnapshot, addDoc, serverTimestamp, query, orderBy, where, writeBatch }
   from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { fmtDate, fmtDateTime, todayStr, cycleEnd, isRenewalDue,
+import { fmtDate, fmtDateTime, todayStr, cycleEnd, isRenewalDue, getCurrentCycleStart,
          statusBadge, deptBadge, roleBadge, pbar, toast, initials,
          isGDWorkDay, isDOWorkDay, countWorkDays,
          detectClashes, leaveTypeBadge, LEAVE_TYPES, balanceField }
@@ -52,11 +52,72 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 function init() {
+  autoRenewAllCycles(); // NEW: catch up any employee whose cycle has crossed their anniversary
   listenEmployees();
   listenRequests();
   listenGroups();
   listenAudit();
   setTimeout(initMyLeave, 500);
+}
+
+// ── NEW: bulk date-based automatic cycle renewal ─────────────────
+// Runs once whenever the manager dashboard loads. For every employee whose
+// join-date anniversary has passed since their stored cycle was last set,
+// archives the old cycle and resets to a fresh cycle starting exactly on
+// that anniversary — no carryover of unused balance. Entitlement is left
+// unchanged (use the "Renew" button to change it manually).
+async function autoRenewAllCycles() {
+  try {
+    const snap = await getDocs(collection(db, "employees"));
+    const today = new Date();
+    const dueList = [];
+
+    snap.docs.forEach(d => {
+      const emp = { id: d.id, ...d.data() };
+      if (!emp.joinDate || !emp.cycleStart) return;
+      const currentCycleStart = getCurrentCycleStart(emp.joinDate, today);
+      if (!currentCycleStart || currentCycleStart === emp.cycleStart) return;
+      dueList.push({ emp, currentCycleStart });
+    });
+
+    if (!dueList.length) return;
+
+    const batch = writeBatch(db);
+    for (const { emp, currentCycleStart } of dueList) {
+      const newCycleEnd = cycleEnd(currentCycleStart);
+      batch.update(doc(db, "employees", emp.id), {
+        cycleStart: currentCycleStart, cycleEnd: newCycleEnd,
+        leaveUsed: 0, unpaidUsed: 0, paternityUsed: 0,
+        hajjUsed: 0, emergencyUsed: 0, customUsed: 0,
+        cycleId: `${emp.id}_${currentCycleStart}`
+      });
+    }
+    await batch.commit();
+
+    // Archive each old cycle separately (writeBatch has no bearing on addDoc-generated IDs cleanly in a loop, so do these after commit)
+    for (const { emp, currentCycleStart } of dueList) {
+      await addDoc(collection(db, "cycleHistory"), {
+        employeeId: emp.id, employeeName: emp.name, dept: emp.dept,
+        cycleStart: emp.cycleStart, cycleEnd: emp.cycleEnd,
+        entitlement: emp.entitlement, leaveUsed: emp.leaveUsed || 0,
+        unpaidUsed: emp.unpaidUsed || 0, paternityUsed: emp.paternityUsed || 0,
+        hajjUsed: emp.hajjUsed || 0, emergencyUsed: emp.emergencyUsed || 0,
+        customUsed: emp.customUsed || 0, archivedAt: serverTimestamp()
+      });
+    }
+
+    await addDoc(collection(db, "auditLog"), {
+      action: "cycle_renewed",
+      label: `Automatic cycle renewal — ${dueList.length} employee(s)`,
+      detail: dueList.map(x => `${x.emp.name}: → ${fmtDate(x.currentCycleStart)}`).join("\n") +
+        `\n(Join-date anniversary reached; unused days do not carry over.)`,
+      by: "System (auto)", at: serverTimestamp()
+    });
+
+    toast(`Auto-renewed leave cycles for ${dueList.length} employee(s).`);
+  } catch (err) {
+    console.error("Bulk auto-renew failed:", err);
+  }
 }
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {
@@ -546,7 +607,7 @@ window.removeEmployee = (empId) => {
   });
 };
 
-// ── Renew cycle ──────────────────────────────────────────────────
+// ── Renew cycle (manual override — still available for changing entitlement) ──
 window.openRenewModal = (empId) => {
   const emp = employees.find(e => e.id === empId);
   if (!emp) return;
@@ -568,10 +629,7 @@ window.openRenewModal = (empId) => {
   });
 });
 
-// ── PATCHED: renewal now resets ALL used-day counters, not just
-// leaveUsed/unpaidUsed. Previously paternityUsed/hajjUsed/emergencyUsed/
-// customUsed carried over indefinitely across cycles, which drifted out
-// of sync with what "Special Leave Taken" actually showed. ──
+// ── Renewal resets ALL used-day counters, not just leaveUsed/unpaidUsed ──
 document.getElementById("renewForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const empId   = document.getElementById("renewEmpId").value;
