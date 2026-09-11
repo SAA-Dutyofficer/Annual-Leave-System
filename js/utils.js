@@ -52,6 +52,31 @@ export function cycleEnd(startStr) {
     String(d.getDate()).padStart(2, "0");
 }
 
+// ── NEW: date-based cycle anchor ─────────────────────────────────
+// Given an employee's join date, returns the start date (YYYY-MM-DD) of
+// whichever annual cycle "today" currently falls inside — i.e. the most
+// recent join-date anniversary that is on or before today. This is what
+// the employee's cycle SHOULD be right now, regardless of how many
+// anniversaries have passed since the record was last renewed, and
+// regardless of how much of their balance they used.
+export function getCurrentCycleStart(joinDateStr, todayDate) {
+  if (!joinDateStr) return null;
+  const join = new Date(joinDateStr + "T00:00:00");
+  let cycleStart = new Date(join.getFullYear(), join.getMonth(), join.getDate());
+  if (cycleStart > todayDate) return null; // hasn't joined yet
+  // Jump forward one anniversary at a time until the NEXT one would be
+  // in the future — that means cycleStart is the current cycle's start.
+  while (true) {
+    const next = new Date(cycleStart);
+    next.setFullYear(next.getFullYear() + 1);
+    if (next > todayDate) break;
+    cycleStart = next;
+  }
+  return cycleStart.getFullYear() + "-" +
+    String(cycleStart.getMonth() + 1).padStart(2, "0") + "-" +
+    String(cycleStart.getDate()).padStart(2, "0");
+}
+
 export function isGDWorkDay(dateStr) {
   const day = new Date(dateStr + "T00:00:00").getDay();
   return day >= 1 && day <= 4;
