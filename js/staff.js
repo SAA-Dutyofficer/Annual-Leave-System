@@ -6,7 +6,7 @@ import { onAuthStateChanged, signOut,
 import { doc, getDoc, collection, query, where, onSnapshot,
          addDoc, updateDoc, serverTimestamp, getDocs, orderBy, writeBatch }
   from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { fmtDate, todayStr, cycleEnd,
+import { fmtDate, todayStr, cycleEnd, getCurrentCycleStart,
          isGDWorkDay, isDOWorkDay, countWorkDays,
          detectClashes, statusBadge, leaveTypeBadge,
          LEAVE_TYPES, balanceField, toast, initials }
@@ -39,6 +39,11 @@ onAuthStateChanged(auth, async (user) => {
   if (!eSnap.exists()) { toast("Employee record not found. Contact your manager.", "error"); return; }
   EMP = { id: eSnap.id, ...eSnap.data() };
 
+  // NEW: check whether this employee's cycle has crossed their join-date
+  // anniversary since they last logged in, and auto-renew if so — no
+  // carryover of unused balance, regardless of how much was left.
+  await autoRenewCycleIfDue();
+
   await restoreLastRoster();
 
   if (EMP.dept === "DO") {
@@ -53,6 +58,53 @@ onAuthStateChanged(auth, async (user) => {
   loadTeam();
   checkRenewal();
 });
+
+// ── NEW: date-based automatic cycle renewal ──────────────────────
+// Fires on every login. Compares today to the employee's join-date
+// anniversary. If today has passed the anniversary that their current
+// stored cycle doesn't already reflect, archive the old cycle and reset
+// to a fresh cycle starting exactly on that anniversary, with all used-day
+// counters back to zero. Entitlement carries forward unchanged unless a
+// manager updates it manually via "Renew Cycle."
+async function autoRenewCycleIfDue() {
+  if (!EMP.joinDate || !EMP.cycleStart) return;
+  const today = new Date();
+  const currentCycleStart = getCurrentCycleStart(EMP.joinDate, today);
+  if (!currentCycleStart || currentCycleStart === EMP.cycleStart) return; // already up to date
+
+  const newCycleEnd = cycleEnd(currentCycleStart);
+  try {
+    await addDoc(collection(db, "cycleHistory"), {
+      employeeId: ME.uid, employeeName: EMP.name, dept: EMP.dept,
+      cycleStart: EMP.cycleStart, cycleEnd: EMP.cycleEnd,
+      entitlement: EMP.entitlement, leaveUsed: EMP.leaveUsed || 0,
+      unpaidUsed: EMP.unpaidUsed || 0, paternityUsed: EMP.paternityUsed || 0,
+      hajjUsed: EMP.hajjUsed || 0, emergencyUsed: EMP.emergencyUsed || 0,
+      customUsed: EMP.customUsed || 0, archivedAt: serverTimestamp()
+    });
+    await updateDoc(doc(db, "employees", ME.uid), {
+      cycleStart: currentCycleStart, cycleEnd: newCycleEnd,
+      leaveUsed: 0, unpaidUsed: 0, paternityUsed: 0,
+      hajjUsed: 0, emergencyUsed: 0, customUsed: 0,
+      cycleId: `${ME.uid}_${currentCycleStart}`
+    });
+    await addDoc(collection(db, "auditLog"), {
+      action: "cycle_renewed",
+      label: `Automatic cycle renewal — ${EMP.name}`,
+      detail: `New cycle: ${fmtDate(currentCycleStart)} – ${fmtDate(newCycleEnd)} (join-date anniversary; unused days do not carry over)`,
+      by: "System (auto)", at: serverTimestamp()
+    });
+    // Reflect locally so the rest of this load renders correctly
+    EMP.cycleStart = currentCycleStart;
+    EMP.cycleEnd = newCycleEnd;
+    EMP.leaveUsed = 0; EMP.unpaidUsed = 0; EMP.paternityUsed = 0;
+    EMP.hajjUsed = 0; EMP.emergencyUsed = 0; EMP.customUsed = 0;
+    EMP.cycleId = `${ME.uid}_${currentCycleStart}`;
+    toast(`Your leave cycle has renewed for ${fmtDate(currentCycleStart)} – ${fmtDate(newCycleEnd)}.`);
+  } catch (err) {
+    console.error("Auto-renew failed:", err);
+  }
+}
 
 // ── Restore last roster ──────────────────────────────────────────
 async function restoreLastRoster() {
@@ -134,7 +186,7 @@ function listenAllRequests() {
   });
 }
 
-// ── Auto-renewal listener ─────────────────────────────────────────
+// ── Auto-renewal listener (balance-depletion path — kept as a backstop) ──
 function listenForAutoRenewal() {
   const empRef = doc(db, "employees", ME.uid);
   onSnapshot(empRef, async (snap) => {
@@ -593,10 +645,9 @@ window.openEditModal = (id) => {
 document.getElementById("editModalClose").addEventListener("click",  () => document.getElementById("editModal").style.display="none");
 document.getElementById("editModalCancel").addEventListener("click", () => document.getElementById("editModal").style.display="none");
 
-// ── PATCHED: Edit form now reverses the ORIGINAL request's day-count from
-// the employee's stored counter (in the same batch) before the request goes
-// back to Pending. Without this, re-approving the edited request would add
-// the new day-count on top of the old one that was never removed. ──
+// ── Edit form: reverses the ORIGINAL request's day-count from the
+// employee's stored counter (in the same batch) before the request goes
+// back to Pending, so re-approval doesn't double count it. ──
 document.getElementById("editForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const id=document.getElementById("editRequestId").value,
